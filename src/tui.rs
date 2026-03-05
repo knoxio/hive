@@ -22,6 +22,9 @@ use tokio::{
 
 use crate::message::Message;
 
+/// Maximum visible content lines in the input box before it stops growing.
+const MAX_INPUT_LINES: usize = 6;
+
 pub async fn run(
     reader: BufReader<tokio::net::unix::OwnedReadHalf>,
     mut write_half: tokio::net::unix::OwnedWriteHalf,
@@ -86,7 +89,7 @@ pub async fn run(
     let mut messages: Vec<Message> = Vec::new();
     let mut input = String::new();
     let mut cursor_pos: usize = 0; // byte index into `input`, always on a char boundary
-    let mut input_scroll: usize = 0; // char-count offset for horizontal scrolling
+    let mut input_row_scroll: usize = 0; // vertical scroll within the input box
     let mut scroll_offset: usize = 0;
     let mut result: anyhow::Result<()> = Ok(());
 
@@ -97,8 +100,31 @@ pub async fn run(
         }
 
         let term_area = terminal.size()?;
+        // Input content width is terminal width minus the two border columns.
+        let input_content_width = term_area.width.saturating_sub(2) as usize;
+
+        // Compute wrapped display rows for the input and the cursor position within them.
+        let input_display_rows = wrap_input_display(&input, input_content_width);
+        let total_input_rows = input_display_rows.len();
+        let visible_input_lines = total_input_rows.min(MAX_INPUT_LINES);
+        // +2 for top and bottom borders; minimum 3 (1 content line + 2 borders).
+        let input_box_height = (visible_input_lines + 2) as u16;
+
+        let (cursor_row, cursor_col) = cursor_display_pos(&input, cursor_pos, input_content_width);
+
+        // Adjust vertical scroll so the cursor stays visible.
+        if cursor_row < input_row_scroll {
+            input_row_scroll = cursor_row;
+        }
+        if visible_input_lines > 0 && cursor_row >= input_row_scroll + visible_input_lines {
+            input_row_scroll = cursor_row + 1 - visible_input_lines;
+        }
+
         let content_width = term_area.width.saturating_sub(2) as usize;
-        let visible_count = term_area.height.saturating_sub(5) as usize; // 3 input + 2 borders
+        let visible_count = term_area
+            .height
+            .saturating_sub(input_box_height)
+            .saturating_sub(2) as usize;
 
         let msg_texts: Vec<Text<'static>> = messages
             .iter()
@@ -114,7 +140,7 @@ pub async fn run(
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Min(3), Constraint::Length(3)])
+                .constraints([Constraint::Min(3), Constraint::Length(input_box_height)])
                 .split(f.area());
 
             // actual visible rows from layout (overrides approximation)
@@ -150,38 +176,11 @@ pub async fn run(
             );
             f.render_widget(msg_list, chunks[0]);
 
-            let input_content_width = chunks[1].width.saturating_sub(2) as usize;
+            // Render only the visible slice of wrapped input rows.
+            let end = (input_row_scroll + visible_input_lines).min(total_input_rows);
+            let display_text = input_display_rows[input_row_scroll..end].join("\n");
 
-            // Single pass: compute cursor display-column and scroll byte index.
-            // Uses Unicode display widths so wide (CJK) chars are accounted for.
-            let cursor_col: usize = input[..cursor_pos]
-                .chars()
-                .map(|c| c.width().unwrap_or(0))
-                .sum();
-
-            // Adjust horizontal scroll (in display columns) to keep cursor visible.
-            if cursor_col < input_scroll {
-                input_scroll = cursor_col;
-            }
-            if input_content_width > 0 && cursor_col >= input_scroll + input_content_width {
-                input_scroll = cursor_col - input_content_width + 1;
-            }
-
-            // Find the byte offset of the first char at or past the scroll column.
-            let scroll_byte = {
-                let mut col: usize = 0;
-                let mut byte = input.len();
-                for (i, ch) in input.char_indices() {
-                    if col >= input_scroll {
-                        byte = i;
-                        break;
-                    }
-                    col += ch.width().unwrap_or(0);
-                }
-                byte
-            };
-
-            let input_widget = Paragraph::new(&input[scroll_byte..])
+            let input_widget = Paragraph::new(display_text)
                 .block(
                     Block::default()
                         .title(format!(" {username} "))
@@ -192,8 +191,9 @@ pub async fn run(
             f.render_widget(input_widget, chunks[1]);
 
             // Place terminal cursor inside the input box.
-            let cursor_x = chunks[1].x + 1 + (cursor_col - input_scroll) as u16;
-            let cursor_y = chunks[1].y + 1;
+            let visible_cursor_row = cursor_row - input_row_scroll;
+            let cursor_x = chunks[1].x + 1 + cursor_col as u16;
+            let cursor_y = chunks[1].y + 1 + visible_cursor_row as u16;
             f.set_cursor_position((cursor_x, cursor_y));
         })?;
 
@@ -201,11 +201,15 @@ pub async fn run(
             match event::read()? {
                 Event::Key(key) => match key.code {
                     KeyCode::Enter => {
-                        if !input.is_empty() {
+                        if key.modifiers.contains(KeyModifiers::SHIFT) {
+                            // Shift+Enter: insert a newline at the cursor.
+                            input.insert(cursor_pos, '\n');
+                            cursor_pos += 1;
+                        } else if !input.is_empty() {
                             let payload = build_payload(&input);
                             input.clear();
                             cursor_pos = 0;
-                            input_scroll = 0;
+                            input_row_scroll = 0;
                             scroll_offset = 0;
                             if let Err(e) = write_half
                                 .write_all(format!("{payload}\n").as_bytes())
@@ -285,6 +289,76 @@ pub async fn run(
     terminal.show_cursor()?;
 
     result
+}
+
+/// Wrap input text for display in the input box.
+///
+/// Splits on `\n` (explicit newlines from Shift+Enter), then wraps each
+/// logical line character-by-character at `width` display columns using
+/// Unicode display widths. Returns the flat list of display rows.
+///
+/// If `width` is 0, returns each logical line unsplit.
+fn wrap_input_display(input: &str, width: usize) -> Vec<String> {
+    let mut rows: Vec<String> = Vec::new();
+    for logical_line in input.split('\n') {
+        if width == 0 {
+            rows.push(logical_line.to_string());
+            continue;
+        }
+        let mut current = String::new();
+        let mut col: usize = 0;
+        for ch in logical_line.chars() {
+            let w = ch.width().unwrap_or(0);
+            // Wrap before adding if the character would overflow and we have content.
+            if col + w > width && col > 0 {
+                rows.push(std::mem::take(&mut current));
+                col = 0;
+            }
+            current.push(ch);
+            col += w;
+        }
+        rows.push(current);
+    }
+    // Always at least one row.
+    if rows.is_empty() {
+        rows.push(String::new());
+    }
+    rows
+}
+
+/// Return the `(display_row, display_col)` of `cursor_pos` (a byte index into
+/// `input`) after applying the same wrapping logic as [`wrap_input_display`].
+fn cursor_display_pos(input: &str, cursor_pos: usize, width: usize) -> (usize, usize) {
+    let mut row: usize = 0;
+    let mut col: usize = 0;
+    for (i, ch) in input.char_indices() {
+        if i >= cursor_pos {
+            break;
+        }
+        if ch == '\n' {
+            row += 1;
+            col = 0;
+        } else {
+            let w = ch.width().unwrap_or(0);
+            if width > 0 && col + w > width && col > 0 {
+                row += 1;
+                col = 0;
+            }
+            col += w;
+        }
+    }
+    // If col == width and there is remaining content that is not a newline,
+    // the next character would start on a new row — advance the cursor there
+    // so it doesn't render past the right border of the input box.
+    if width > 0
+        && col == width
+        && cursor_pos < input.len()
+        && !input[cursor_pos..].starts_with('\n')
+    {
+        row += 1;
+        col = 0;
+    }
+    (row, col)
 }
 
 /// Arrow glyph used in DM display (`→`).
@@ -582,5 +656,148 @@ fn build_payload(input: &str) -> String {
         serde_json::json!({ "type": "command", "cmd": cmd, "params": params }).to_string()
     } else {
         serde_json::json!({ "type": "message", "content": input }).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cursor_display_pos, wrap_input_display};
+
+    // ── wrap_input_display ──────────────────────────────────────────────────
+
+    #[test]
+    fn wrap_empty_string_returns_one_empty_row() {
+        assert_eq!(wrap_input_display("", 10), vec![""]);
+    }
+
+    #[test]
+    fn wrap_fits_on_one_line() {
+        assert_eq!(wrap_input_display("hello", 10), vec!["hello"]);
+    }
+
+    #[test]
+    fn wrap_exactly_at_boundary_stays_one_line() {
+        // "abcde" is exactly 5 chars, width 5 — no wrap needed.
+        assert_eq!(wrap_input_display("abcde", 5), vec!["abcde"]);
+    }
+
+    #[test]
+    fn wrap_one_char_over_splits_to_two_rows() {
+        assert_eq!(wrap_input_display("abcdef", 5), vec!["abcde", "f"]);
+    }
+
+    #[test]
+    fn wrap_explicit_newline_splits_logical_lines() {
+        assert_eq!(
+            wrap_input_display("hello\nworld", 20),
+            vec!["hello", "world"]
+        );
+    }
+
+    #[test]
+    fn wrap_explicit_newline_at_end_gives_trailing_empty_row() {
+        assert_eq!(wrap_input_display("hi\n", 20), vec!["hi", ""]);
+    }
+
+    #[test]
+    fn wrap_combines_explicit_newlines_and_width_wrapping() {
+        // "abcde\nfghij" with width 3 → each logical line wraps independently.
+        assert_eq!(wrap_input_display("abcde\nfg", 3), vec!["abc", "de", "fg"]);
+    }
+
+    #[test]
+    fn wrap_width_zero_returns_lines_unsplit() {
+        assert_eq!(
+            wrap_input_display("a very long line", 0),
+            vec!["a very long line"]
+        );
+    }
+
+    #[test]
+    fn wrap_width_zero_with_newlines_splits_on_newlines_only() {
+        assert_eq!(wrap_input_display("foo\nbar", 0), vec!["foo", "bar"]);
+    }
+
+    #[test]
+    fn wrap_wide_chars_counted_by_display_width() {
+        // '中' has display width 2. With width 4, "中中中" should split after
+        // the second character (col would reach 4 exactly), third starts new row.
+        let rows = wrap_input_display("中中中", 4);
+        assert_eq!(rows, vec!["中中", "中"]);
+    }
+
+    // ── cursor_display_pos ──────────────────────────────────────────────────
+
+    #[test]
+    fn cursor_at_start_of_empty_input() {
+        assert_eq!(cursor_display_pos("", 0, 10), (0, 0));
+    }
+
+    #[test]
+    fn cursor_at_end_of_single_line() {
+        // "hello" fits in width 10; cursor at byte 5 → col 5 row 0.
+        assert_eq!(cursor_display_pos("hello", 5, 10), (0, 5));
+    }
+
+    #[test]
+    fn cursor_mid_single_line() {
+        assert_eq!(cursor_display_pos("hello", 2, 10), (0, 2));
+    }
+
+    #[test]
+    fn cursor_wraps_to_second_row() {
+        // "abcdef" width 5: 'f' is on row 1 col 0.
+        assert_eq!(cursor_display_pos("abcdef", 5, 5), (1, 0));
+    }
+
+    #[test]
+    fn cursor_after_explicit_newline() {
+        // "hi\n" — cursor after the '\n' is at (1, 0).
+        assert_eq!(cursor_display_pos("hi\n", 3, 20), (1, 0));
+    }
+
+    #[test]
+    fn cursor_on_second_explicit_line() {
+        // "foo\nbar" with width 10: cursor at byte 7 (end) is (1, 3).
+        assert_eq!(cursor_display_pos("foo\nbar", 7, 10), (1, 3));
+    }
+
+    #[test]
+    fn cursor_explicit_newline_combined_with_wrap() {
+        // "abc\ndefgh" width 3: "abc" → row 0, "def" → row 1, "gh" → row 2.
+        // cursor at byte 9 (end, 'h') → (2, 2).
+        let s = "abc\ndefgh";
+        assert_eq!(cursor_display_pos(s, s.len(), 3), (2, 2));
+    }
+
+    #[test]
+    fn cursor_width_zero_no_wrapping() {
+        // width=0 disables wrapping; col just accumulates.
+        assert_eq!(cursor_display_pos("hello world", 5, 0), (0, 5));
+    }
+
+    #[test]
+    fn cursor_wide_char_advances_by_display_width() {
+        // '中' = 3 bytes, display width 2. "中中" with width 4 fits on one row.
+        // cursor between the two chars (byte 3) → (0, 2).
+        let s = "中中";
+        assert_eq!(cursor_display_pos(s, 3, 4), (0, 2));
+        // cursor at end (byte 6): no more content → stays at (0, 4).
+        assert_eq!(cursor_display_pos(s, 6, 4), (0, 4));
+    }
+
+    #[test]
+    fn cursor_wide_char_at_boundary_with_more_content() {
+        // "中中中" width 4: rows ["中中", "中"].
+        // cursor between 2nd and 3rd '中' (byte 6) → start of row 1.
+        let s = "中中中";
+        assert_eq!(cursor_display_pos(s, 6, 4), (1, 0));
+    }
+
+    #[test]
+    fn cursor_at_exact_line_boundary_no_more_content() {
+        // "abcde" exactly fills width 5, no following content.
+        // Cursor at end → (0, 5), not (1, 0).
+        assert_eq!(cursor_display_pos("abcde", 5, 5), (0, 5));
     }
 }
