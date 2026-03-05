@@ -9,65 +9,68 @@ of your work.
 
 ## Communicating from Claude Code (sequential tool model)
 
-Claude Code cannot block on a persistent socket connection. Use the one-shot subcommands:
+Claude Code cannot block on a persistent socket connection. Use the one-shot subcommands.
+
+### Session setup (once per agent per broker restart)
+
+```bash
+# Register your username with the broker — writes a token to /tmp/room-<id>.token
+room join <room-id> <your-username>
+```
+
+The token file is read automatically by all subsequent commands. If the broker restarts, re-run `room join`.
+
+### One-shot commands
 
 ```bash
 # Send a message — prints the broadcast JSON and exits
-room send <room-id> <your-username> your message here
+room send <room-id> your message here
 
 # Check for new messages since last poll — prints NDJSON and exits
-room poll <room-id> <your-username>
+room poll <room-id>
 
 # Check messages since a specific ID (overrides stored cursor)
-room poll <room-id> <your-username> --since <message-id>
+room poll <room-id> --since <message-id>
 ```
 
 The cursor is stored at `/tmp/room-<id>-<username>.cursor`. A second `room poll` with no `--since` returns only messages that arrived after the first call.
 
 ### Staying resident (autonomous loop)
 
-To remain active without human re-prompting, write a watch script to disk with the `Write` tool (not a heredoc — `$()` command substitution is blocked in some hook environments), then run it with `run_in_background=true` and `timeout=600000`:
+Use `room watch` — it blocks until a foreign message arrives, then exits. No external script needed.
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-ROOM="<room-id>"
-ME="<username>"
-while true; do
-  room poll "$ROOM" "$ME" > /tmp/room_msgs.txt 2>&1
-  if grep -v "\"user\":\"$ME\"" /tmp/room_msgs.txt | grep -q "\"type\":\"message\""; then
-    grep -v "\"user\":\"$ME\"" /tmp/room_msgs.txt | grep "\"type\":\"message\""
-    break
-  fi
-  sleep 5
-done
+room watch <room-id> --interval 5
 ```
 
-Block on `TaskOutput` — when a message arrives the task completes, you act, send a reply via `room send`, then re-launch the script. The self-message filter (`grep -v`) prevents the agent from waking on its own sends. Filtering for `"type":"message"` prevents waking on join/leave/system noise.
+Run it with `run_in_background=true` and `timeout=600000`. Block on `TaskOutput` — when a message arrives the task completes, you act, send a reply via `room send`, then re-launch `room watch`.
 
 ### Typical loop
 
 ```bash
+# 0. Join the room (once — skip if token file already exists)
+room join myroom feat-myfeature
+
 # 1. Announce yourself and propose your plan
-room send myroom feat-myfeature "starting #42. plan: add Foo struct to src/broker.rs, wire into handle_message(). no changes to wire format."
+room send myroom "starting #42. plan: add Foo struct to src/broker.rs, wire into handle_message(). no changes to wire format."
 
 # 2. Poll for objections before writing any code (~30s wait)
-room poll myroom feat-myfeature
+room poll myroom
 # If someone objects or flags a conflict — resolve it here before continuing.
 
 # 3. Mid-implementation checkpoints — after reading the target file, after first draft
-room send myroom feat-myfeature "read src/broker.rs. adding Foo in the handler section."
+room send myroom "read src/broker.rs. adding Foo in the handler section."
 # ... write code ...
-room send myroom feat-myfeature "first draft done. running tests."
+room send myroom "first draft done. running tests."
 
 # 4. Before opening a PR — poll for anything missed
-room poll myroom feat-myfeature
-room send myroom feat-myfeature "opening PR for #42. modified: src/broker.rs, tests/integration.rs"
+room poll myroom
+room send myroom "opening PR for #42. modified: src/broker.rs, tests/integration.rs"
 
 # 5. Before pushing a fix commit (review feedback, CI failure, conflict) — announce first
-room send myroom feat-myfeature "fixing clippy error on PR #42, hold review"
+room send myroom "fixing clippy error on PR #42, hold review"
 # ... fix ...
-room send myroom feat-myfeature "fix pushed"
+room send myroom "fix pushed"
 ```
 
 ## Persistent agent mode (long-lived processes only)
@@ -97,14 +100,15 @@ To send structured input via `--agent` stdin or `room send`, plain text is also 
 ## Expected behaviour
 
 ### On starting work
-1. Poll for recent history: `room poll <room-id> <username>`
-2. Announce yourself and **propose your plan**: who you are, what branch you are on, which
+1. Join the room if you don't have a token yet: `room join <room-id> <username>`
+2. Poll for recent history: `room poll <room-id>`
+3. Announce yourself and **propose your plan**: who you are, what branch you are on, which
    files you intend to modify, and your implementation approach in 2–3 sentences.
-3. Poll again after ~30 seconds. If anyone objects or flags a conflict, resolve it before
+4. Poll again after ~30 seconds. If anyone objects or flags a conflict, resolve it before
    writing any code. Silence means proceed.
 
 ### During work
-- **Claim tasks before starting them**: `room send <room-id> <username> /claim <description>`
+- **Claim tasks before starting them**: `room send <room-id> /claim <description>`
 - **Announce before touching any file** — even on fix commits or rebases. Send the intent
   message first, then do the work. Never start silently.
   ```
@@ -137,7 +141,7 @@ To send structured input via `--agent` stdin or `room send`, plain text is also 
 
 ```
 src/
-  main.rs      — CLI parsing, subcommand dispatch (join / send / poll)
+  main.rs      — CLI parsing, subcommand dispatch (join / send / poll / watch)
   broker.rs    — Unix socket server, message fanout, persistence
   client.rs    — Connects to broker, runs TUI or agent mode
   tui.rs       — ratatui split-pane interface
@@ -146,7 +150,7 @@ src/
   oneshot.rs   — send_message / poll_messages (no persistent connection)
   lib.rs       — Re-exports all modules (required for integration tests)
 tests/
-  integration.rs — 27 integration tests against a live broker
+  integration.rs — 36 integration tests against a live broker
 ```
 
 Key invariants to preserve:
