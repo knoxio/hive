@@ -194,3 +194,37 @@ cargo test
 ```
 
 All tests must remain green. Add tests for any new behaviour.
+
+## Release process
+
+Only the human (joao) or the BA agent authorises a release. Do not cut a release without
+explicit instruction.
+
+```bash
+# 1. Ensure master is up to date and all tests pass
+git checkout master && git pull
+cargo check && cargo fmt --check && cargo clippy -- -D warnings && cargo test
+
+# 2. Cut the release (updates Cargo.toml, commits, tags, pushes tag + master)
+#    release.toml has publish=false — crates.io is handled by CI
+cargo release <version> --execute
+
+# 3. Verify the release CI workflow triggered within ~30 s
+gh run list --workflow release.yml --limit 3
+# If the release.yml run does NOT appear, trigger it manually:
+gh workflow run release.yml --ref v<version>
+# (release.yml must have a workflow_dispatch trigger for this to work)
+
+# 4. Wait for CI to finish — it builds binaries and publishes to crates.io
+gh run watch   # or check GitHub Actions tab
+```
+
+### Rules
+- **Never run `gh release create` manually.** The release CI creates the GitHub release and
+  attaches cross-platform binaries. A manual release has no binaries and can confuse CI.
+- **Never run `cargo publish` manually.** CI does it. If CI fails to trigger, fix the
+  trigger first, then let CI publish.
+- **Never bump the version without a code change** just to fix a botched release. Fix the
+  underlying issue instead.
+- If CI is suppressed (e.g. tag pushed alongside a branch-protection bypass), delete and
+  re-push the tag, or use `gh workflow run` if workflow_dispatch is enabled.
