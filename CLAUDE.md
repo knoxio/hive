@@ -14,33 +14,37 @@ Claude Code cannot block on a persistent socket connection. Use the one-shot sub
 ### Session setup (once per agent per broker restart)
 
 ```bash
-# Register your username with the broker — writes a token to /tmp/room-<id>.token
+# Register your username with the broker — writes a token to /tmp/room-<id>-<username>.token
 room join <room-id> <your-username>
+# Output: {"type":"token","token":"<uuid>","username":"<your-username>"}
 ```
 
-The token file is read automatically by all subsequent commands. If the broker restarts, re-run `room join`.
+Save the token from the output. Pass it explicitly with `-t` on every subsequent command. If the broker restarts, re-run `room join` to get a new token.
 
 ### One-shot commands
 
 ```bash
 # Send a message — prints the broadcast JSON and exits
-room send <room-id> your message here
+room send <room-id> -t <token> your message here
+
+# Send a direct message to a specific user
+room send <room-id> -t <token> --to <recipient> your message here
 
 # Check for new messages since last poll — prints NDJSON and exits
-room poll <room-id>
+room poll <room-id> -t <token>
 
 # Check messages since a specific ID (overrides stored cursor)
-room poll <room-id> --since <message-id>
+room poll <room-id> -t <token> --since <message-id>
 ```
 
-The cursor is stored at `/tmp/room-<id>-<username>.cursor`. A second `room poll` with no `--since` returns only messages that arrived after the first call.
+The cursor is stored at `/tmp/room-<id>-<username>.cursor` (username resolved from token). A second `room poll` with no `--since` returns only messages that arrived after the first call.
 
 ### Staying resident (autonomous loop)
 
 Use `room watch` — it blocks until a foreign message arrives, then exits. No external script needed.
 
 ```bash
-room watch <room-id> --interval 5
+room watch <room-id> -t <token> --interval 5
 ```
 
 Run it with `run_in_background=true` and `timeout=600000`. Block on `TaskOutput` — when a message arrives the task completes, you act, send a reply via `room send`, then re-launch `room watch`.
@@ -48,29 +52,32 @@ Run it with `run_in_background=true` and `timeout=600000`. Block on `TaskOutput`
 ### Typical loop
 
 ```bash
-# 0. Join the room (once — skip if token file already exists)
+# 0. Join the room (once per broker lifetime) — save the token from the output
 room join myroom feat-myfeature
+# → {"type":"token","token":"<uuid>","username":"feat-myfeature"}
+# Export for convenience:
+TOKEN=<uuid>
 
 # 1. Announce yourself and propose your plan
-room send myroom "starting #42. plan: add Foo struct to src/broker.rs, wire into handle_message(). no changes to wire format."
+room send myroom -t $TOKEN "starting #42. plan: add Foo struct to src/broker.rs, wire into handle_message(). no changes to wire format."
 
 # 2. Poll for objections before writing any code (~30s wait)
-room poll myroom
+room poll myroom -t $TOKEN
 # If someone objects or flags a conflict — resolve it here before continuing.
 
 # 3. Mid-implementation checkpoints — after reading the target file, after first draft
-room send myroom "read src/broker.rs. adding Foo in the handler section."
+room send myroom -t $TOKEN "read src/broker.rs. adding Foo in the handler section."
 # ... write code ...
-room send myroom "first draft done. running tests."
+room send myroom -t $TOKEN "first draft done. running tests."
 
 # 4. Before opening a PR — poll for anything missed
-room poll myroom
-room send myroom "opening PR for #42. modified: src/broker.rs, tests/integration.rs"
+room poll myroom -t $TOKEN
+room send myroom -t $TOKEN "opening PR for #42. modified: src/broker.rs, tests/integration.rs"
 
 # 5. Before pushing a fix commit (review feedback, CI failure, conflict) — announce first
-room send myroom "fixing clippy error on PR #42, hold review"
+room send myroom -t $TOKEN "fixing clippy error on PR #42, hold review"
 # ... fix ...
-room send myroom "fix pushed"
+room send myroom -t $TOKEN "fix pushed"
 ```
 
 ## Persistent agent mode (long-lived processes only)
@@ -100,15 +107,15 @@ To send structured input via `--agent` stdin or `room send`, plain text is also 
 ## Expected behaviour
 
 ### On starting work
-1. Join the room if you don't have a token yet: `room join <room-id> <username>`
-2. Poll for recent history: `room poll <room-id>`
+1. Join the room if you don't have a token yet: `room join <room-id> <username>` — save the token UUID from the output.
+2. Poll for recent history: `room poll <room-id> -t <token>`
 3. Announce yourself and **propose your plan**: who you are, what branch you are on, which
    files you intend to modify, and your implementation approach in 2–3 sentences.
 4. Poll again after ~30 seconds. If anyone objects or flags a conflict, resolve it before
    writing any code. Silence means proceed.
 
 ### During work
-- **Claim tasks before starting them**: `room send <room-id> /claim <description>`
+- **Claim tasks before starting them**: `room send <room-id> -t <token> /claim <description>`
 - **Announce before touching any file** — even on fix commits or rebases. Send the intent
   message first, then do the work. Never start silently.
   ```
