@@ -7,6 +7,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-06
+
+### Added
+
+- **TUI: multi-line input with line wrapping** — the input box now grows up to 6 lines as
+  text is typed. Long lines wrap visually instead of scrolling horizontally. `Shift+Enter`
+  inserts a newline at the cursor; plain `Enter` continues to send. Cursor placement is
+  Unicode-width-aware (CJK and fullwidth characters counted correctly).
+- **TUI: `\` + Enter inserts a newline** — an alternative to `Shift+Enter`: if the
+  character immediately before the cursor is a backslash, pressing `Enter` strips the
+  backslash and inserts a newline in its place.
+- **TUI: command palette** — typing `/` at the start of an empty input opens an overlay
+  listing all available slash commands with descriptions. Continues to filter as you type,
+  navigate with `Up`/`Down`, complete with `Enter` or `Tab`, dismiss with `Esc`.
+
+### Fixed
+
+- **CLI: `--version` flag field** — changed to unit type so `clap` no longer treats it as
+  a required positional argument.
+
 ## [0.3.0] - 2026-03-05
 
 ### Added
