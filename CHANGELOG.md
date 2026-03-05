@@ -7,6 +7,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-05
+
+### Added
+
+- **CLI: `-v` / `--version` flag** — `room -v` and `room --version` now print the version
+  and exit cleanly.
+- **TUI: visible cursor with mid-line editing** — a terminal cursor tracks the insertion
+  point inside the input box. Left/Right move it one Unicode scalar at a time; Home/End
+  jump to line boundaries. Horizontal scrolling keeps the cursor visible when text
+  overflows the box width. Wide characters (CJK, fullwidth) are measured in display
+  columns via `unicode-width`.
+- **One-shot DMs via `room send`** — `room send <room> <user> --to <recipient> <msg>`
+  delivers a direct message without requiring `--agent` mode.
+
+### Fixed
+
+- **TUI: message list scrolling** — the message pane now auto-scrolls to the latest
+  message and correctly accounts for wrapped multi-line messages when computing scroll
+  offsets.
+
 ## [0.2.0] - 2026-03-05
 
 ### Added
@@ -62,7 +82,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--agent` mode for long-lived processes with JSON stdin/stdout.
 - Claude Code plugin with `room-coordination` skill and `/room:check`, `/room:send` commands.
 
-[Unreleased]: https://github.com/knoxio/room/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/knoxio/room/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/knoxio/room/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/knoxio/room/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/knoxio/room/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/knoxio/room/compare/v0.1.2...v0.1.3
