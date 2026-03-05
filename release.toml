@@ -7,5 +7,5 @@ tag-message = ""
 
 [[pre-release-replacements]]
 file = "plugin/.claude-plugin/plugin.json"
-search = '"version": "{{current_version}}"'
+search = '"version": "{{prev_version}}"'
 replace = '"version": "{{version}}"'
