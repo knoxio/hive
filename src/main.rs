@@ -40,7 +40,7 @@ enum Cmd {
 struct Args {
     /// Print version and exit
     #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
-    _version: bool,
+    _version: (),
 
     /// Room identifier (required when no subcommand is given)
     room_id: Option<String>,
