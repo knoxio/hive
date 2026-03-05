@@ -48,18 +48,26 @@ Block on `TaskOutput` — when a message arrives the task completes, you act, se
 ### Typical loop
 
 ```bash
-# On starting work — announce yourself
-room send myroom feat-myfeature "starting work on X"
+# 1. Announce yourself and propose your plan
+room send myroom feat-myfeature "starting #42. plan: add Foo struct to src/broker.rs, wire into handle_message(). no changes to wire format."
 
-# After any significant step — broadcast progress
-room send myroom feat-myfeature "finished Y, moving on to Z"
-
-# Before touching a shared file — check for conflicts
+# 2. Poll for objections before writing any code (~30s wait)
 room poll myroom feat-myfeature
-room send myroom feat-myfeature "about to modify src/broker.rs"
+# If someone objects or flags a conflict — resolve it here before continuing.
 
-# On completion
-room send myroom feat-myfeature "done. modified: src/broker.rs, tests/integration.rs"
+# 3. Mid-implementation checkpoints — after reading the target file, after first draft
+room send myroom feat-myfeature "read src/broker.rs. adding Foo in the handler section."
+# ... write code ...
+room send myroom feat-myfeature "first draft done. running tests."
+
+# 4. Before opening a PR — poll for anything missed
+room poll myroom feat-myfeature
+room send myroom feat-myfeature "opening PR for #42. modified: src/broker.rs, tests/integration.rs"
+
+# 5. Before pushing a fix commit (review feedback, CI failure, conflict) — announce first
+room send myroom feat-myfeature "fixing clippy error on PR #42, hold review"
+# ... fix ...
+room send myroom feat-myfeature "fix pushed"
 ```
 
 ## Persistent agent mode (long-lived processes only)
@@ -90,17 +98,24 @@ To send structured input via `--agent` stdin or `room send`, plain text is also 
 
 ### On starting work
 1. Poll for recent history: `room poll <room-id> <username>`
-2. Announce yourself: who you are, what branch you are on, and what you intend to work on.
-3. Wait briefly for acknowledgement or objections before starting work.
+2. Announce yourself and **propose your plan**: who you are, what branch you are on, which
+   files you intend to modify, and your implementation approach in 2–3 sentences.
+3. Poll again after ~30 seconds. If anyone objects or flags a conflict, resolve it before
+   writing any code. Silence means proceed.
 
 ### During work
-- **Announce intent before touching shared code.** If you are about to modify a file that
-  another agent might also need to change, say so and wait for a reply.
 - **Claim tasks before starting them**: `room send <room-id> <username> /claim <description>`
+- **Announce before touching any file** — even on fix commits or rebases. Send the intent
+  message first, then do the work. Never start silently.
+  ```
+  "fixing conflict on PR #30, hold review"
+  "about to modify src/tui.rs — adding palette overlay only, not touching input rendering"
+  ```
+- **Poll and send a milestone update at natural breakpoints:**
+  - After reading the target file (before writing any code)
+  - After completing a first working draft (before running tests)
+  - Before opening or updating a PR
 - **Broadcast blockers.** If you are stuck or need a decision, say so clearly. Do not silently stall.
-- **Poll before significant steps** to catch instructions or conflicts you may have missed:
-  `room poll <room-id> <username>`
-- **Check in periodically** — a short status update every few steps is better than silence.
 
 ### Coordination rules
 - **One agent per file at a time.** If you need to modify a file that another agent has
@@ -116,6 +131,7 @@ To send structured input via `--agent` stdin or `room send`, plain text is also 
 1. Announce that your work is done and summarise what changed.
 2. State which files were modified.
 3. Note any decisions or trade-offs the other agents or the human should be aware of.
+4. Include `Closes #<issue-number>` in the PR description so the issue auto-closes on merge.
 
 ## Codebase overview
 
@@ -144,17 +160,21 @@ Key invariants to preserve:
 
 ## Pre-push checklist
 
-Run all three in order before every `git push`. CI enforces all of them and will fail if any step is skipped.
+Run all four in order before every `git push`. CI enforces all of them and will fail if any
+step is skipped. Run them in this order — each step can invalidate the previous one.
 
 ```bash
-cargo fmt
-cargo clippy -- -D warnings
-cargo test
+cargo check                  # catches syntax/type errors incl. unresolved conflict markers
+cargo fmt                    # reformats code; commit the result if anything changed
+cargo clippy -- -D warnings  # fix root causes, never suppress
+cargo test                   # all tests must pass
 ```
 
-- `cargo fmt` — reformats code; commit the result if it changed anything.
-- `cargo clippy -- -D warnings` — treats all warnings as errors; fix the root cause, never suppress.
-- `cargo test` — all tests must pass.
+- `cargo check` must come first — it catches unresolved merge conflict markers (`<<<<<<<`)
+  and type errors that `fmt` and `clippy` will not report cleanly.
+- `cargo fmt` must run *after* any clippy-driven rewrites, since collapsing a nested `if`
+  can push a line over the formatter's line-length limit.
+- Never use `#[allow(...)]` or `// eslint-disable` to silence warnings. Fix the root cause.
 
 ## Running tests
 
