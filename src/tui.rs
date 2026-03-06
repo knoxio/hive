@@ -54,32 +54,30 @@ const PALETTE_COMMANDS: &[PaletteItem] = &[
         usage: "/who",
         description: "List users in the room",
     },
-];
-
-const ADMIN_COMMANDS: &[PaletteItem] = &[
+    // Admin commands
     PaletteItem {
         cmd: "kick",
-        usage: "\\kick <user>",
+        usage: "/kick <user>",
         description: "Kick a user from the room",
     },
     PaletteItem {
         cmd: "reauth",
-        usage: "\\reauth <user>",
+        usage: "/reauth <user>",
         description: "Invalidate a user's token",
     },
     PaletteItem {
         cmd: "clear-tokens",
-        usage: "\\clear-tokens",
+        usage: "/clear-tokens",
         description: "Revoke all session tokens",
     },
     PaletteItem {
         cmd: "exit",
-        usage: "\\exit",
+        usage: "/exit",
         description: "Shut down the broker",
     },
     PaletteItem {
         cmd: "clear",
-        usage: "\\clear",
+        usage: "/clear",
         description: "Clear the room history",
     },
 ];
@@ -282,7 +280,6 @@ pub async fn run(
     let mut input_row_scroll: usize = 0; // vertical scroll within the input box
     let mut scroll_offset: usize = 0;
     let mut palette = CommandPalette::new(PALETTE_COMMANDS);
-    let mut admin_palette = CommandPalette::new(ADMIN_COMMANDS);
     let mut mention = MentionPicker::new();
     let mut result: anyhow::Result<()> = Ok(());
 
@@ -509,58 +506,6 @@ pub async fn run(
                 );
                 f.render_widget(mention_list, popup_rect);
             }
-
-            // Render the admin command palette popup when `\` trigger is active.
-            if admin_palette.active && !admin_palette.filtered.is_empty() {
-                let admin_items: Vec<ListItem> = admin_palette
-                    .filtered
-                    .iter()
-                    .enumerate()
-                    .map(|(row, &idx)| {
-                        let item = &admin_palette.commands[idx];
-                        let style = if row == admin_palette.selected {
-                            Style::default()
-                                .fg(Color::Black)
-                                .bg(Color::Red)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(Color::White)
-                        };
-                        ListItem::new(Line::from(vec![
-                            Span::styled(
-                                format!("{:<20}", item.usage),
-                                style.add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(
-                                format!("  {}", item.description),
-                                if row == admin_palette.selected {
-                                    Style::default().fg(Color::Black).bg(Color::Red)
-                                } else {
-                                    Style::default().fg(Color::DarkGray)
-                                },
-                            ),
-                        ]))
-                    })
-                    .collect();
-
-                let popup_height = (admin_palette.filtered.len() as u16 + 2).min(chunks[0].height);
-                let popup_y = chunks[1].y.saturating_sub(popup_height);
-                let popup_rect = Rect {
-                    x: chunks[1].x,
-                    y: popup_y,
-                    width: chunks[1].width,
-                    height: popup_height,
-                };
-
-                f.render_widget(Clear, popup_rect);
-                let admin_list = List::new(admin_items).block(
-                    Block::default()
-                        .title(" admin ")
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Red)),
-                );
-                f.render_widget(admin_list, popup_rect);
-            }
         })?;
 
         if event::poll(std::time::Duration::from_millis(50))? {
@@ -571,8 +516,6 @@ pub async fn run(
                             mention.deactivate();
                         } else if palette.active {
                             palette.deactivate();
-                        } else if admin_palette.active {
-                            admin_palette.deactivate();
                         }
                     }
                     KeyCode::Tab if mention.active => {
@@ -596,14 +539,6 @@ pub async fn run(
                         }
                         palette.deactivate();
                     }
-                    KeyCode::Tab if admin_palette.active => {
-                        if let Some(usage) = admin_palette.selected_usage() {
-                            input = usage.to_owned();
-                            cursor_pos = input.len();
-                            input_row_scroll = 0;
-                        }
-                        admin_palette.deactivate();
-                    }
                     KeyCode::Enter => {
                         if mention.active {
                             if let Some(user) = mention.selected_user() {
@@ -624,13 +559,6 @@ pub async fn run(
                                 input_row_scroll = 0;
                             }
                             palette.deactivate();
-                        } else if admin_palette.active {
-                            if let Some(usage) = admin_palette.selected_usage() {
-                                input = usage.to_owned();
-                                cursor_pos = input.len();
-                                input_row_scroll = 0;
-                            }
-                            admin_palette.deactivate();
                         } else if key.modifiers.contains(KeyModifiers::SHIFT) {
                             // Shift+Enter: insert a newline at the cursor.
                             input.insert(cursor_pos, '\n');
@@ -659,8 +587,6 @@ pub async fn run(
                             mention.move_up();
                         } else if palette.active {
                             palette.move_up();
-                        } else if admin_palette.active {
-                            admin_palette.move_up();
                         } else {
                             scroll_offset = scroll_offset.saturating_add(1);
                         }
@@ -670,8 +596,6 @@ pub async fn run(
                             mention.move_down();
                         } else if palette.active {
                             palette.move_down();
-                        } else if admin_palette.active {
-                            admin_palette.move_down();
                         } else {
                             scroll_offset = scroll_offset.saturating_sub(1);
                         }
@@ -705,18 +629,6 @@ pub async fn run(
                                 }
                             } else {
                                 palette.deactivate();
-                            }
-                        } else if c == '\\' && input == "\\" {
-                            // Activate admin palette when `\` is typed into an empty input.
-                            admin_palette.activate();
-                        } else if admin_palette.active {
-                            if let Some(query) = input.strip_prefix('\\') {
-                                admin_palette.update_filter(query);
-                                if admin_palette.filtered.is_empty() {
-                                    admin_palette.deactivate();
-                                }
-                            } else {
-                                admin_palette.deactivate();
                             }
                         }
                     }
@@ -753,17 +665,6 @@ pub async fn run(
                                     }
                                 } else {
                                     palette.deactivate();
-                                }
-                            } else if admin_palette.active {
-                                if input.is_empty() {
-                                    admin_palette.deactivate();
-                                } else if let Some(query) = input.strip_prefix('\\') {
-                                    admin_palette.update_filter(query);
-                                    if admin_palette.filtered.is_empty() {
-                                        admin_palette.deactivate();
-                                    }
-                                } else {
-                                    admin_palette.deactivate();
                                 }
                             }
                         }
@@ -1245,12 +1146,10 @@ mod tests {
     #[test]
     fn palette_filter_by_cmd_prefix() {
         let mut p = CommandPalette::new(PALETTE_COMMANDS);
-        p.update_filter("d");
-        assert!(!p.filtered.is_empty());
-        // All filtered entries must start with "d"
-        for &i in &p.filtered {
-            assert!(p.commands[i].cmd.starts_with('d'));
-        }
+        // "dm" matches exactly one command by cmd prefix (no description ambiguity)
+        p.update_filter("dm");
+        assert_eq!(p.filtered.len(), 1);
+        assert_eq!(p.commands[p.filtered[0]].cmd, "dm");
     }
 
     #[test]
@@ -1368,15 +1267,15 @@ mod tests {
     // ── ADMIN_COMMANDS palette tests ──────────────────────────────────────────
 
     #[test]
-    fn admin_palette_starts_inactive() {
-        let p = CommandPalette::new(ADMIN_COMMANDS);
+    fn unified_palette_starts_inactive() {
+        let p = CommandPalette::new(PALETTE_COMMANDS);
         assert!(!p.active);
-        assert_eq!(p.filtered.len(), ADMIN_COMMANDS.len());
+        assert_eq!(p.filtered.len(), PALETTE_COMMANDS.len());
     }
 
     #[test]
-    fn admin_palette_contains_all_five_commands() {
-        let cmds: Vec<&str> = ADMIN_COMMANDS.iter().map(|c| c.cmd).collect();
+    fn palette_contains_all_admin_commands() {
+        let cmds: Vec<&str> = PALETTE_COMMANDS.iter().map(|c| c.cmd).collect();
         assert!(cmds.contains(&"kick"));
         assert!(cmds.contains(&"reauth"));
         assert!(cmds.contains(&"clear-tokens"));
@@ -1385,30 +1284,34 @@ mod tests {
     }
 
     #[test]
-    fn admin_palette_usages_use_backslash_prefix() {
-        for item in ADMIN_COMMANDS {
-            assert!(
-                item.usage.starts_with('\\'),
-                "admin command '{}' usage must start with \\",
-                item.cmd
-            );
+    fn admin_usages_use_slash_prefix() {
+        let admin_cmds = ["kick", "reauth", "clear-tokens", "exit", "clear"];
+        for item in PALETTE_COMMANDS {
+            if admin_cmds.contains(&item.cmd) {
+                assert!(
+                    item.usage.starts_with('/'),
+                    "admin command '{}' usage must start with /",
+                    item.cmd
+                );
+            }
         }
     }
 
     #[test]
-    fn admin_palette_filter_kick() {
-        let mut p = CommandPalette::new(ADMIN_COMMANDS);
+    fn palette_filter_kick() {
+        let mut p = CommandPalette::new(PALETTE_COMMANDS);
         p.update_filter("ki");
         assert_eq!(p.filtered.len(), 1);
         assert_eq!(p.commands[p.filtered[0]].cmd, "kick");
     }
 
     #[test]
-    fn admin_palette_selected_usage_backslash() {
-        let mut p = CommandPalette::new(ADMIN_COMMANDS);
+    fn admin_selected_usage_slash() {
+        let mut p = CommandPalette::new(PALETTE_COMMANDS);
         p.activate();
+        // All commands use / prefix
         let usage = p.selected_usage().unwrap();
-        assert!(usage.starts_with('\\'));
+        assert!(usage.starts_with('/'));
     }
 
     // ── seed_online_users_from_who tests ─────────────────────────────────────
