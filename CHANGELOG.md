@@ -90,7 +90,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **CLI: `room list`** — discovers active rooms by scanning `/tmp/room-*.sock` with a
   200ms connect timeout. Outputs NDJSON with room ID, socket path, and user count. (#140)
 - **Broker unit tests** — added unit tests for auth, commands, and fanout modules. (#136)
-- **Sprint docs** — `docs/sprint-review-2026-03-06.md` and `docs/retro-2026-03-06.md`. (#132)
+- **Sprint docs** — sprint review and retro (moved to Notion). (#132)
 
 ### Changed
 
