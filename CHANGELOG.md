@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-03-06
+
 ### Changed
 
 - **TUI: welcome splash redesign** — antenna with blinking light (✦/·) on top, right eye
@@ -265,7 +267,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--agent` mode for long-lived processes with JSON stdin/stdout.
 - Claude Code plugin with `room-coordination` skill and `/room:check`, `/room:send` commands.
 
-[Unreleased]: https://github.com/knoxio/room/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/knoxio/room/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/knoxio/room/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/knoxio/room/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/knoxio/room/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/knoxio/room/compare/v0.7.0...v0.8.0
