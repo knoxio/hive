@@ -494,12 +494,12 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 412 Rust tests + 107 shell tests**
+**Current baseline: 421 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 20 unit tests
 - room-cli: 236 unit + 71 integration + 5 smoke = 312 tests
-- room-ralph: 73 unit + 7 integration = 80 tests (+ 1 ignored live-broker test)
+- room-ralph: 81 unit + 8 integration = 89 tests (+ 1 ignored live-broker test)
 
 Shell breakdown:
 - test-context-monitor.sh: 48 tests
