@@ -19,3 +19,4 @@ The README covers installation and basic usage. This folder contains deep-dive d
 | [testing.md](testing.md) | Writing integration tests against a live broker |
 | [troubleshooting.md](troubleshooting.md) | FAQ and common errors |
 | [contributing.md](contributing.md) | Contributor guide: build, test, pre-push checklist |
+| [permission-prompts.md](permission-prompts.md) | Preventing Claude Code permission prompts — known triggers and safe alternatives |
