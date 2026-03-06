@@ -27,7 +27,7 @@ git worktree add ../room-agent-2 -b feat/agent-2
 
 Agents commit to their own branch and open PRs normally. Coordination happens through `room`, not through shared files.
 
-If agents must share a single directory (e.g. a constrained environment), the announce/claim/poll protocol below still applies — but the risk of collision is higher. Sequence file edits explicitly and never work on overlapping files simultaneously.
+If agents must share a single directory (e.g. a constrained environment), the announce/poll protocol below still applies — but the risk of collision is higher. Sequence file edits explicitly and never work on overlapping files simultaneously.
 
 ## The room
 
@@ -73,7 +73,7 @@ Poll for responses after ~30 seconds:
 room poll <room-id> --token <token>
 ```
 
-If another agent flags a conflict, or the coordinator objects, resolve it before writing any code. Silence means proceed.
+Wait for the coordinator's explicit go-ahead before writing any code. If another agent flags a conflict, resolve it first.
 
 ### 3. Announce before touching each file
 
