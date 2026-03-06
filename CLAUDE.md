@@ -136,9 +136,8 @@ Every message is a JSON object with a `type` field:
 
 To send structured input via `--agent` stdin or `room send`, plain text is also accepted.
 
-**Note:** Plugin commands (e.g. `/help`, `/stats`) are only dispatched when sent via the
-TUI or `--agent` JSON envelope. Plain text `room send "/help"` is treated as a regular
-message, not a command. This is by design — one-shot sends are for messages, not commands.
+**Note:** Slash commands (e.g. `/who`, `/help`, `/dm user msg`) are routed to the correct
+JSON envelope by both the TUI and `room send`. Plain text is sent as a regular message.
 
 ## HTTP/WebSocket transport
 
@@ -415,7 +414,7 @@ crates/room-cli/src/
     help.rs            — Built-in /help plugin
     stats.rs           — Built-in /stats plugin
   oneshot/
-    mod.rs             — Re-exports and subcommand dispatch
+    mod.rs             — Re-exports, subcommand dispatch, slash command routing (build_wire_payload)
     transport.rs       — Socket connect, send_message, send_message_with_token
     token.rs           — Token file I/O, cursor read/write, cmd_join
     poll.rs            — poll_messages, pull_messages, cmd_poll, cmd_pull, cmd_watch
@@ -436,7 +435,7 @@ crates/room-ralph/src/
   progress.rs          — Progress file I/O: write/read/delete, log usage
   prompt.rs            — Prompt builder: custom prompts, progress inclusion
   room.rs              — Room CLI wrapper: join/send/poll via Command::new
-  claude.rs            — Claude subprocess wrapper: spawn, parse output
+  claude.rs            — Claude subprocess wrapper: spawn, parse output, resolve_allowed_tools
 
 scripts/
   pre-push.sh          — Git hook: check + fmt + clippy + test
@@ -494,12 +493,12 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 421 Rust tests + 107 shell tests**
+**Current baseline: 445 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 20 unit tests
-- room-cli: 236 unit + 71 integration + 5 smoke = 312 tests
-- room-ralph: 81 unit + 8 integration = 89 tests (+ 1 ignored live-broker test)
+- room-cli: 245 unit + 71 integration + 5 smoke = 321 tests
+- room-ralph: 96 unit + 8 integration = 104 tests (+ 1 ignored live-broker test)
 
 Shell breakdown:
 - test-context-monitor.sh: 48 tests
