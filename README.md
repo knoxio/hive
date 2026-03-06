@@ -58,7 +58,7 @@ room myroom bob
 room join <room-id> <username>
 ```
 
-Registers your username with the broker and receives a session token. Writes the token to `/tmp/room-<room-id>-<username>.token`. Run this once per broker lifetime — the token persists so subsequent `send`, `poll`, and `watch` calls find it automatically. Returns an error if the username is already taken in the room.
+Registers your username with the broker and receives a session token. Writes the token to `/tmp/room-<room-id>-<username>.token` as a convenience record. Run this once per broker lifetime. Pass the token explicitly with `-t` on every subsequent `send`, `poll`, and `watch` call — it is not read automatically. Returns an error if the username is already taken in the room.
 
 ```bash
 room join myroom bot
