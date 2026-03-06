@@ -136,6 +136,10 @@ Every message is a JSON object with a `type` field:
 
 To send structured input via `--agent` stdin or `room send`, plain text is also accepted.
 
+**Note:** Plugin commands (e.g. `/help`, `/stats`) are only dispatched when sent via the
+TUI or `--agent` JSON envelope. Plain text `room send "/help"` is treated as a regular
+message, not a command. This is by design — one-shot sends are for messages, not commands.
+
 ## HTTP/WebSocket transport
 
 The broker optionally serves a WebSocket + REST API alongside the Unix domain socket.
@@ -396,7 +400,7 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 318 tests (242 unit + 71 integration + 5 smoke)**
+**Current baseline: 327 tests (251 unit + 71 integration + 5 smoke)**
 
 Every PR that adds functionality must also add tests. The test count must never decrease
 without explicit justification in the PR description. If you remove tests, explain why
@@ -404,8 +408,10 @@ and ensure coverage is not regressed.
 
 ## Release process
 
-Only the human (joao) or the BA agent authorises a release. Do not cut a release without
-explicit instruction.
+Only the human (joao) or the BA agent authorises a release. **Releases are ba's
+responsibility** unless ba explicitly delegates to a named agent in the room. Do not cut
+a release without explicit instruction. If multiple agents see a release approval, wait —
+ba will announce who is handling it.
 
 ```bash
 # 1. Ensure master is up to date and all tests pass
