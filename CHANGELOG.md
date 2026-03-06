@@ -7,6 +7,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **TUI: welcome splash redesign** — antenna with blinking light (✦/·) on top, right eye
+  winks instead of both blinking, "room" label continues to pulse. README logo updated
+  with antenna. (#177)
+
 ## [1.0.1] - 2026-03-06
 
 ### Added
