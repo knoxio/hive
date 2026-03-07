@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-rc.1] - 2026-03-07
+
 ### Added
 
 - Environment variable configuration: `RALPH_ROOM`, `RALPH_USERNAME`, `RALPH_MODEL`,

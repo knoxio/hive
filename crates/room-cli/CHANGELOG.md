@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [2.1.0-rc.1] - 2026-03-07
+
 ### Added
 
 - `room who <room-id> -t <token>` oneshot subcommand to query online members and statuses. (#226)

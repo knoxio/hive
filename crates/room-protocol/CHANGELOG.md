@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0-rc.1] - 2026-03-07
+
+Version bump to stay in sync with room-cli 2.1.0. No functional changes.
+
 ## [2.0.1] - 2026-03-06
 
 ### Added
