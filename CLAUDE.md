@@ -402,6 +402,7 @@ crates/
   room-protocol/          — wire format types (lib, package: room-protocol)
   room-cli/               — broker + TUI + oneshot (bin: room, package: room-cli)
   room-ralph/             — agent wrapper (bin: room-ralph, package: room-ralph)
+  agentroom/              — deprecation shim (bin: agentroom, prints migration notice)
 scripts/                  — shell scripts (pre-push, tests, legacy ralph wrapper)
 ```
 
@@ -433,6 +434,7 @@ crates/room-cli/src/
     transport.rs       — Socket connect, send_message, send_message_with_token
     token.rs           — Token file I/O, cursor read/write, cmd_join
     poll.rs            — poll_messages, pull_messages, cmd_poll, cmd_pull, cmd_watch
+    who.rs             — cmd_who: oneshot /who query
   tui/
     mod.rs             — Main run() loop and TUI state
     input.rs           — InputState, handle_key, Action enum
@@ -508,12 +510,13 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 445 Rust tests + 107 shell tests**
+**Current baseline: 456 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 20 unit tests
-- room-cli: 245 unit + 71 integration + 5 smoke = 321 tests
+- room-cli: 251 unit + 71 integration + 5 smoke = 327 tests
 - room-ralph: 96 unit + 8 integration = 104 tests (+ 1 ignored live-broker test)
+- agentroom: 5 integration tests (deprecation shim)
 
 Shell breakdown:
 - test-context-monitor.sh: 48 tests
