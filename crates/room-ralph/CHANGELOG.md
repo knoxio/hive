@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-rc.2] - 2026-03-08
+
 ### Added
 
 - `--disallow-tools <tools>` flag and `RALPH_DISALLOWED_TOOLS` environment variable for
