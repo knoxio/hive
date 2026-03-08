@@ -1,5 +1,6 @@
 pub(crate) mod auth;
 pub(crate) mod commands;
+pub mod daemon;
 pub(crate) mod fanout;
 pub(crate) mod state;
 pub(crate) mod ws;
@@ -137,14 +138,7 @@ async fn handle_client(
     own_tx: broadcast::Sender<String>,
     state: &Arc<RoomState>,
 ) -> anyhow::Result<()> {
-    // Clone the Arc fields up-front so spawned tasks can capture owned handles.
-    let clients = state.clients.clone();
-    let status_map = state.status_map.clone();
-    let host_user = state.host_user.clone();
     let token_map = state.token_map.clone();
-    let chat_path = state.chat_path.clone();
-    let room_id = state.room_id.clone();
-    let seq_counter = state.seq_counter.clone();
 
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
@@ -184,9 +178,27 @@ async fn handle_client(
         return Ok(());
     }
 
+    run_interactive_session(cid, &username, reader, write_half, own_tx, state).await
+}
+
+/// Run an interactive client session after the username has been determined.
+///
+/// Shared by both single-room (`handle_client`) and daemon (`dispatch_connection`)
+/// paths. Handles: client registration, host election, history replay, join/leave
+/// events, inbound/outbound message loops, and cleanup.
+pub(crate) async fn run_interactive_session(
+    cid: u64,
+    username: &str,
+    reader: BufReader<OwnedReadHalf>,
+    mut write_half: OwnedWriteHalf,
+    own_tx: broadcast::Sender<String>,
+    state: &Arc<RoomState>,
+) -> anyhow::Result<()> {
+    let username = username.to_owned();
+
     // Register username in the client map
     {
-        let mut map = clients.lock().await;
+        let mut map = state.clients.lock().await;
         if let Some(entry) = map.get_mut(&cid) {
             entry.0 = username.clone();
         }
@@ -194,7 +206,7 @@ async fn handle_client(
 
     // Register as host if no host has been set yet (first to complete handshake)
     {
-        let mut host = host_user.lock().await;
+        let mut host = state.host_user.lock().await;
         if host.is_none() {
             *host = Some(username.clone());
         }
@@ -203,7 +215,8 @@ async fn handle_client(
     eprintln!("[broker] {username} joined (cid={cid})");
 
     // Track this user in the status map (empty status by default)
-    status_map
+    state
+        .status_map
         .lock()
         .await
         .insert(username.clone(), String::new());
@@ -214,9 +227,9 @@ async fn handle_client(
     // Send chat history directly to this client's socket, filtering DMs the
     // client is not party to (sender, recipient, or host).
     // If the client disconnects mid-replay, treat it as a clean exit.
-    let host_name = host_user.lock().await.clone();
+    let host_name = state.host_user.lock().await.clone();
     let is_host = host_name.as_deref() == Some(username.as_str());
-    let history = history::load(&chat_path).await.unwrap_or_default();
+    let history = history::load(&state.chat_path).await.unwrap_or_default();
     for msg in &history {
         let visible = match msg {
             Message::DirectMessage { user, to, .. } => {
@@ -233,8 +246,15 @@ async fn handle_client(
     }
 
     // Broadcast join event (also persists it)
-    let join_msg = make_join(room_id.as_str(), &username);
-    if let Err(e) = broadcast_and_persist(&join_msg, &clients, &chat_path, &seq_counter).await {
+    let join_msg = make_join(&state.room_id, &username);
+    if let Err(e) = broadcast_and_persist(
+        &join_msg,
+        &state.clients,
+        &state.chat_path,
+        &state.seq_counter,
+    )
+    .await
+    {
         eprintln!("[broker] broadcast_and_persist(join) failed: {e:#}");
         return Ok(());
     }
@@ -283,10 +303,11 @@ async fn handle_client(
 
     // Inbound: read lines from client socket, parse and broadcast
     let username_in = username.clone();
-    let room_id_in = room_id.clone();
+    let room_id_in = state.room_id.clone();
     let write_half_in = write_half.clone();
     let state_in = state.clone();
     let inbound = tokio::spawn(async move {
+        let mut reader = reader;
         let mut line = String::new();
         loop {
             line.clear();
@@ -352,11 +373,17 @@ async fn handle_client(
     }
 
     // Remove user from status map on disconnect
-    status_map.lock().await.remove(&username);
+    state.status_map.lock().await.remove(&username);
 
     // Broadcast leave event
-    let leave_msg = make_leave(room_id.as_str(), &username);
-    let _ = broadcast_and_persist(&leave_msg, &clients, &chat_path, &seq_counter).await;
+    let leave_msg = make_leave(&state.room_id, &username);
+    let _ = broadcast_and_persist(
+        &leave_msg,
+        &state.clients,
+        &state.chat_path,
+        &state.seq_counter,
+    )
+    .await;
     eprintln!("[broker] {username} left (cid={cid})");
 
     Ok(())
@@ -365,7 +392,7 @@ async fn handle_client(
 /// Handle a one-shot SEND connection: read one message line, route it, echo it back, close.
 /// The sender is never registered in ClientMap/StatusMap and generates no join/leave events.
 /// DM envelopes are routed via `dm_and_persist`; all other messages are broadcast.
-async fn handle_oneshot_send(
+pub(crate) async fn handle_oneshot_send(
     username: String,
     mut reader: BufReader<OwnedReadHalf>,
     mut write_half: OwnedWriteHalf,
