@@ -475,6 +475,10 @@ impl DaemonState {
         // Clean up ephemeral files on exit.
         let _ = std::fs::remove_file(&self.config.socket_path);
         let _ = std::fs::remove_file(crate::paths::room_pid_path());
+        // Remove per-room meta files written during room creation.
+        for room_id in self.list_rooms().await {
+            let _ = std::fs::remove_file(crate::paths::room_meta_path(&room_id));
+        }
 
         result
     }
@@ -672,6 +676,15 @@ pub(crate) async fn create_room_entry(
     )?;
 
     rooms.lock().await.insert(room_id.to_owned(), state);
+
+    // Write a meta file so one-shot commands (poll, watch, pull) can find the
+    // chat file without a broker connection. The meta file lives in the
+    // platform runtime dir alongside the daemon socket.
+    let meta_path = crate::paths::room_meta_path(room_id);
+    let chat_path_str = daemon_config.chat_path(room_id);
+    let meta_json = serde_json::json!({ "chat_path": chat_path_str });
+    let _ = std::fs::write(&meta_path, meta_json.to_string());
+
     Ok(())
 }
 
