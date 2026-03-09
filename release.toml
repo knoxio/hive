@@ -5,8 +5,3 @@ publish = false  # CI handles publish via crates.io token
 pre-release-commit-message = "chore: release {{version}}"
 tag-message = ""
 
-[[pre-release-replacements]]
-file = "plugin/.claude-plugin/plugin.json"
-search = '"version": "\d+\.\d+\.\d+"'
-replace = '"version": "{{version}}"'
-min = 0
