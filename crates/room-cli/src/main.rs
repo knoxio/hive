@@ -382,10 +382,11 @@ async fn main() -> anyhow::Result<()> {
             } else if let Some(id) = room_id {
                 vec![id]
             } else if use_all {
-                let discovered = oneshot::discover_daemon_rooms();
+                let username = oneshot::username_from_token_any_room(&token)?;
+                let discovered = oneshot::discover_joined_rooms(&username);
                 if discovered.is_empty() {
                     anyhow::bail!(
-                        "no rooms found — ensure the daemon is running with active rooms"
+                        "no rooms found — ensure the daemon is running and you have joined at least one room"
                     );
                 }
                 discovered
@@ -503,11 +504,12 @@ async fn main() -> anyhow::Result<()> {
             } else if let Some(id) = room_id {
                 vec![id]
             } else {
-                // Auto-discover all daemon rooms.
-                let discovered = oneshot::discover_daemon_rooms();
+                // Auto-discover rooms the user has joined.
+                let username = oneshot::username_from_token_any_room(&token)?;
+                let discovered = oneshot::discover_joined_rooms(&username);
                 if discovered.is_empty() {
                     anyhow::bail!(
-                        "no rooms found — specify a room ID, use --rooms, or ensure the daemon is running"
+                        "no rooms found — specify a room ID, use --rooms, or ensure the daemon is running and you have joined at least one room"
                     );
                 }
                 discovered
@@ -545,11 +547,12 @@ async fn main() -> anyhow::Result<()> {
             } else if let Some(id) = room_id {
                 vec![id]
             } else {
-                // Auto-discover all daemon rooms.
-                let discovered = oneshot::discover_daemon_rooms();
+                // Auto-discover rooms the user has joined.
+                let username = oneshot::username_from_token_any_room(&token)?;
+                let discovered = oneshot::discover_joined_rooms(&username);
                 if discovered.is_empty() {
                     anyhow::bail!(
-                        "no rooms found — specify a room ID, use --rooms, or ensure the daemon is running"
+                        "no rooms found — specify a room ID, use --rooms, or ensure the daemon is running and you have joined at least one room"
                     );
                 }
                 discovered

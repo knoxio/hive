@@ -4,7 +4,7 @@ pub mod token;
 pub mod transport;
 pub mod who;
 
-pub use list::{cmd_list, discover_daemon_rooms};
+pub use list::{cmd_list, discover_daemon_rooms, discover_joined_rooms};
 pub use poll::{
     cmd_poll, cmd_poll_multi, cmd_pull, cmd_query, cmd_watch, poll_messages, poll_messages_multi,
     pull_messages, QueryOptions,

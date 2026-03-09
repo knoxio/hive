@@ -15,10 +15,21 @@ struct RoomInfo {
 /// Discover all daemon-managed rooms by scanning for `.meta` files in the
 /// runtime directory. Returns room IDs sorted alphabetically.
 ///
-/// This is used by `room watch` and `room poll` when no room ID is specified —
-/// the agent listens to all rooms the daemon is managing.
+/// This returns ALL daemon rooms regardless of membership. Use
+/// [`discover_joined_rooms`] to filter to rooms the user has joined.
 pub fn discover_daemon_rooms() -> Vec<String> {
     discover_daemon_rooms_in(&crate::paths::room_runtime_dir())
+}
+
+/// Discover daemon rooms the user has joined (has a token file for).
+///
+/// Scans for `.meta` files, then filters to rooms where a token file
+/// exists for `username`. Returns room IDs sorted alphabetically.
+pub fn discover_joined_rooms(username: &str) -> Vec<String> {
+    discover_daemon_rooms()
+        .into_iter()
+        .filter(|room_id| crate::paths::token_path(room_id, username).exists())
+        .collect()
 }
 
 /// Scan `dir` for `room-*.meta` files and return room IDs sorted alphabetically.
