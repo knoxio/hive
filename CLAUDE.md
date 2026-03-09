@@ -425,7 +425,6 @@ crates/
   room-protocol/          — wire format types (lib, package: room-protocol)
   room-cli/               — broker + TUI + oneshot (bin: room, package: room-cli)
   room-ralph/             — agent wrapper (bin: room-ralph, package: room-ralph)
-  agentroom/              — deprecation shim (bin: agentroom, prints migration notice)
 scripts/                  — shell scripts (pre-push, tests, legacy ralph wrapper)
 ```
 
@@ -582,13 +581,12 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 1005 Rust tests + 107 shell tests**
+**Current baseline: 1006 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 79 unit tests
-- room-cli: 635 unit + 137 integration (auth+broker+daemon+oneshot+rest+lifecycle+scripted+ws) + 5 smoke = 777 tests
-- room-ralph: 136 unit + 8 integration = 144 tests (+ 1 ignored live-broker test)
-- agentroom: 5 integration tests (deprecation shim)
+- room-cli: 640 unit + 137 integration (auth+broker+daemon+oneshot+rest+lifecycle+scripted+ws) + 5 smoke = 782 tests
+- room-ralph: 136 unit + 9 integration = 145 tests (+ 1 ignored live-broker test)
 
 Note: integration tests are split into focused modules under `tests/` (auth, broker, daemon,
 oneshot, rest_query, room_lifecycle, scripted, ws). No single `integration.rs` file.
