@@ -85,13 +85,13 @@ pub fn resolve_socket_target(room_id: &str, explicit: Option<&Path>) -> SocketTa
 // ── Daemon auto-start ─────────────────────────────────────────────────────────
 
 const DAEMON_POLL_INTERVAL_MS: u64 = 50;
-const DAEMON_START_TIMEOUT_MS: u64 = 5_000;
+const DAEMON_START_TIMEOUT_MS: u64 = 15_000;
 
 /// Ensure the multi-room daemon is running.
 ///
 /// If the daemon socket is not connectable, spawns `room daemon` as a detached
 /// background process, writes its PID to `~/.room/roomd.pid`, and polls until
-/// the socket accepts connections (up to 5 seconds).
+/// the socket accepts connections (up to 15 seconds).
 ///
 /// This is a no-op when the caller passes an explicit `--socket` override — in
 /// that case the caller is targeting a specific socket and the daemon should not
