@@ -436,12 +436,14 @@ crates/room-protocol/src/
                           parse_mentions, Message::content/mentions accessors
 
 crates/room-cli/src/
-  main.rs              — CLI parsing, subcommand dispatch (join / send / poll / pull / watch / who / list / daemon)
+  main.rs              — CLI parsing, subcommand dispatch (join / send / poll / pull / watch / who / list / daemon / create / destroy)
   lib.rs               — Re-exports all modules (required for integration tests)
-  client.rs            — Connects to broker, runs TUI or agent mode
+  client.rs            — Connects to broker, runs TUI or agent mode, ensure_token auto-login
   message.rs           — Re-exports room_protocol::* + CLI-specific helpers
   history.rs           — NDJSON load/append
   registry.rs          — Persistent UserRegistry (user CRUD, token auth, room membership, global status)
+  paths.rs             — Room filesystem path resolution (~/.room/state, ~/.room/data, runtime dirs)
+  query.rs             — QueryFilter for `room query` subcommand (regex, date, user filters)
   broker/
     mod.rs             — Accept loop, handle_client, handle_oneshot_send, run_interactive_session
     state.rs           — RoomState struct and type aliases (ClientMap, StatusMap, etc.)
@@ -513,6 +515,15 @@ Key invariants to preserve:
   `--disallowedTools`) for actual enforcement.
 - **Token persistence writes .tokens alongside .chat** — broker saves the token map
   to disk on every issuance and loads it on startup. Tests must clean up `.tokens` files.
+- **UserRegistry owns persistent identity** — `users.json` is the source of truth for
+  user→token mappings in daemon mode. `load_or_migrate_registry()` handles migration
+  from legacy token formats. Do not bypass the registry for token issuance in daemon mode.
+- **Room create/destroy use UDS protocol prefixes** — `CREATE:<room_id>` and
+  `DESTROY:<room_id>` are handled by `handle_create()` and `handle_destroy()` in daemon.rs.
+  `validate_room_id()` enforces naming constraints.
+- **Verify diffs before force-pushing** — always run `git diff origin/master..HEAD` before
+  force-pushing a rebased branch. Rebase regressions (reverting merged code) were the #1
+  process issue in sprint 8.
 - **All tests must pass** before committing: `cargo test`.
 
 ## Pre-push checklist
@@ -551,12 +562,12 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 702 Rust tests + 107 shell tests**
+**Current baseline: 912 Rust tests + 107 shell tests**
 
 Rust breakdown:
-- room-protocol: 47 unit tests
-- room-cli: 414 unit + 91 integration + 5 smoke = 510 tests
-- room-ralph: 132 unit + 8 integration = 140 tests (+ 1 ignored live-broker test)
+- room-protocol: 72 unit tests
+- room-cli: 567 unit + 119 integration + 5 smoke = 691 tests
+- room-ralph: 136 unit + 8 integration = 144 tests (+ 1 ignored live-broker test)
 - agentroom: 5 integration tests (deprecation shim)
 
 Shell breakdown:
