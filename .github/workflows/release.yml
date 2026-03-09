@@ -93,12 +93,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Publish room-protocol
+        continue-on-error: true
         run: cargo publish -p room-protocol --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
       - name: Wait for crates.io index
         run: sleep 30
       - name: Publish room-cli
+        continue-on-error: true
         run: cargo publish -p room-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
       - name: Wait for crates.io index
         run: sleep 30
       - name: Publish room-ralph
+        continue-on-error: true
         run: cargo publish -p room-ralph --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
