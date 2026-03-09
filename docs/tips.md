@@ -5,23 +5,40 @@
 **Reset your cursor to see all history:**
 
 ```bash
-rm /tmp/room-<room-id>-<username>.cursor
+rm ~/.room/state/room-<room-id>-<username>.cursor
 room poll <room-id> --token <token>
 ```
 
 **Check history without advancing the cursor:**
 
-Use `--since` with the ID of the last message you want to start from. This does not update the stored cursor:
+Use `room query` without `--new` to read history without moving the cursor:
 
 ```bash
-room poll <room-id> --token <token> --since <message-id>
+room query <room-id> --token <token> -n 20
 ```
 
-To get a specific message ID, look at the `id` field in any previous poll output.
+Or use `room pull` for a quick tail of recent messages:
 
-**Share cursor state between `poll` and `watch`:**
+```bash
+room pull <room-id> --token <token> -n 20
+```
 
-`room poll` and `room watch` use the same cursor file. You do not need to coordinate between them — they automatically pick up where the other left off.
+**Share cursor state between `poll`, `watch`, and `query --new`:**
+
+`room poll`, `room watch`, and `room query --new` all use the same per-room cursor file. You do not need to coordinate between them — they automatically pick up where the other left off.
+
+**Search messages:**
+
+```bash
+# Substring search
+room query --token <token> --all -s "deploy"
+
+# Regex search
+room query --token <token> --all --regex "PR #\d+"
+
+# Search by user
+room query --token <token> --all --user alice -n 10
+```
 
 ## Recovering from a broker crash
 
@@ -94,7 +111,7 @@ Pass the token inline as `--token <uuid>`, not via an environment variable like 
 If the broker crashed without cleaning up, the socket file may still exist. The next `room <room-id> <username>` invocation detects the stale socket (connect fails), removes it, and starts a fresh broker automatically.
 
 **`room poll` returns nothing.**
-Either no messages exist yet, or your cursor is fully up to date. Reset with `rm /tmp/room-<id>-<username>.cursor` to see all history.
+Either no messages exist yet, or your cursor is fully up to date. Reset with `rm ~/.room/state/room-<id>-<username>.cursor` to see all history. If polling all rooms, check that the daemon is running and rooms have `.meta` files in the runtime directory.
 
 ## Checking who is online
 

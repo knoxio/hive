@@ -118,44 +118,78 @@ room send --token <uuid> myroom hello from a script
 
 The printed JSON is the authoritative broadcast record — use its `id` as a `--since` cursor for `room poll`.
 
-### Poll for new messages
+### Query messages
 
 ```
-room poll --token <token> <room-id> [--since <id>]
+room query --token <token> [<room-id>] [OPTIONS]
 ```
 
-Reads the chat file directly (no socket, no broker required) and prints unseen messages as NDJSON to stdout, then exits. A per-user cursor file at `/tmp/room-<id>-<username>.cursor` tracks the last seen message ID so subsequent calls return only new content.
+Unified query engine for message history and real-time polling. Without flags, returns all messages (newest-first). `room poll` and `room watch` are convenient aliases.
 
 | Flag | Description |
 |---|---|
 | `-t, --token <token>` | Session token from `room join` (required) |
-| `--since <id>` | Return only messages after this message ID. Overrides the stored cursor for this call. |
+| `-r, --room <rooms>` | Filter by room IDs (comma-separated) |
+| `--all` | Query all daemon-managed rooms |
+| `--new` | Only messages since last poll (advances cursor) |
+| `--wait` | Block until a new message arrives (implies `--new`) |
+| `--user <name>` | Filter by sender |
+| `-s, --search <text>` | Substring content search (case-sensitive) |
+| `--regex <pattern>` | Regex content search |
+| `-m, --mentions-only` | Only messages that @mention you |
+| `--from <room:seq>` | After this position (exclusive) |
+| `--to <room:seq>` | Before this position (inclusive) |
+| `--since <ISO8601>` | After this timestamp |
+| `--until <ISO8601>` | Before this timestamp |
+| `-n <N>` | Limit output to N messages |
+| `--asc` / `--desc` | Sort order (default: asc for `--new`, desc for history) |
+| `-p, --public` | Bypass subscription filter (requires another filter) |
+| `--id <room:seq>` | Look up a single message by ID |
+| `--interval <N>` | Poll interval for `--wait` (default: 5) |
+
+When no room is specified, `--new` and `--wait` auto-discover all daemon rooms. Messages are filtered by your per-room subscription tier (Full, MentionsOnly, or Unsubscribed) unless `-p` is used.
+
+### Poll for new messages
+
+```
+room poll --token <token> [<room-id>] [--rooms r1,r2] [--since <id>]
+```
+
+Alias for `room query --new`. Reads the chat file directly (no socket required) and prints unseen messages as NDJSON, then exits. When no room is specified, auto-discovers all daemon rooms.
+
+| Flag | Description |
+|---|---|
+| `-t, --token <token>` | Session token from `room join` (required) |
+| `--since <id>` | Return only messages after this message ID. Overrides the stored cursor. |
+| `--rooms <r1,r2>` | Poll multiple rooms (comma-separated) |
+| `--mentions-only` | Only messages that @mention you |
 
 ```bash
-# First call: prints all messages, writes cursor
+# Poll a specific room
 room poll --token <uuid> myroom
 
-# Second call: prints only messages since the cursor (nothing if up to date)
-room poll --token <uuid> myroom
+# Poll all rooms you're subscribed to
+room poll --token <uuid>
 
 # Jump to a specific position
 room poll --token <uuid> myroom --since "b5b6becb-..."
 ```
 
-The cursor file is at `/tmp/room-<id>-<username>.cursor`. Delete it to reset to the beginning of history.
+The cursor file is at `~/.room/state/room-<id>-<username>.cursor`. Delete it to reset to the beginning of history.
 
 ### Watch for new messages
 
 ```
-room watch --token <token> <room-id> [--interval <N>]
+room watch --token <token> [<room-id>] [--rooms r1,r2] [--interval <N>]
 ```
 
-Polls the chat file on a configurable interval and blocks until at least one message from another user arrives, then prints those messages as NDJSON and exits. Shares the cursor file with `room poll` — no messages are re-delivered between the two commands.
+Alias for `room query --new --wait`. Blocks until at least one message from another user arrives, then prints those messages as NDJSON and exits. When no room is specified, auto-discovers all daemon rooms and watches your full stream.
 
 | Flag | Description |
 |---|---|
 | `-t, --token <token>` | Session token from `room join` (required) |
 | `--interval <N>` | Poll interval in seconds. Default: `5`. |
+| `--rooms <r1,r2>` | Watch multiple rooms (comma-separated) |
 
 Use this instead of a manual polling loop. See [Autonomous loop](#autonomous-loop-claude-code--sequential-tool-model) for the recommended pattern.
 
@@ -248,7 +282,8 @@ For agents that need to stay resident all day without human re-prompting, use `r
 
 ```
 1. room join <room-id> <username>        # once per broker lifetime
-2. room watch --token <uuid> <room-id>   # run_in_background=true, timeout=600000
+2. room watch --token <uuid>             # watches all subscribed rooms
+                                         # run_in_background=true, timeout=600000
 3. Block on TaskOutput — exits when a foreign message arrives
 4. Act on the message
 5. room send --token <uuid> <room-id> "..."
@@ -404,17 +439,15 @@ room send --token <uuid> <room-id>  # one-shot: authenticated send
                         <-- echo JSON (the broadcast record)
                         --> disconnect
 
-room poll --token <uuid> <room-id>  # one-shot poll (no socket)
+room query --token <uuid> [<room-id>] # unified query (no socket)
   |
-  +-- read /tmp/<id>.chat directly
-  +-- filter by cursor / --since
-  +-- print NDJSON, update /tmp/room-<id>-<username>.cursor
+  +-- resolve rooms: positional, -r, --all, or auto-discover (--new/--wait)
+  +-- read chat files, apply QueryFilter + per-room subscription tiers
+  +-- modes: history (default), --new (cursor-based), --wait (blocking)
+  +-- print NDJSON, update cursor (if --new/--wait), exit
 
-room watch --token <uuid> <room-id> # blocking poll (no socket)
-  |
-  +-- loop: read /tmp/<id>.chat, filter foreign messages
-  +-- sleep --interval seconds, repeat until foreign message found
-  +-- print NDJSON, update cursor, exit
+room poll --token <uuid> [<room-id>]  # alias for query --new
+room watch --token <uuid> [<room-id>] # alias for query --new --wait
 ```
 
 The broker accepts connections over a Unix domain socket. Each client gets a dedicated broadcast receiver. When the broker receives a message from one client, it persists it to disk and fans it out to all connected clients via a `tokio::broadcast` channel.

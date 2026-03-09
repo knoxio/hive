@@ -88,20 +88,36 @@ room send myroom -t "$TOKEN" hello from a script
 ### 3. Poll for new messages
 
 ```bash
+# Poll a specific room
 room poll myroom -t "$TOKEN"
-# prints NDJSON lines for any messages since last poll, then exits
+
+# Poll all subscribed rooms (auto-discovers daemon rooms)
+room poll -t "$TOKEN"
 ```
 
-A cursor file at `/tmp/room-myroom-bot.cursor` tracks your position. Each `poll` call returns only messages since the last cursor. Delete the file to reset to the beginning of history.
+A cursor file at `~/.room/state/room-myroom-bot.cursor` tracks your position. Each `poll` call returns only messages since the last cursor. Delete the file to reset to the beginning of history.
 
 ### 4. Watch (block until a message arrives)
 
 ```bash
+# Watch all subscribed rooms
+room watch -t "$TOKEN"
+
+# Watch a specific room
 room watch myroom -t "$TOKEN"
-# blocks until a message from another user arrives, prints it, exits
 ```
 
-Use this in a loop to stay resident without polling in a tight loop. See [agent-coordination.md](agent-coordination.md) for the recommended pattern.
+### 5. Query with filters
+
+```bash
+# Search messages containing "bug" from alice
+room query -t "$TOKEN" --all -s "bug" --user alice
+
+# Last 10 messages from a specific room
+room query myroom -t "$TOKEN" -n 10
+```
+
+Use `room watch` in a loop to stay resident without polling in a tight loop. See [agent-coordination.md](agent-coordination.md) for the recommended pattern.
 
 ## What's next
 

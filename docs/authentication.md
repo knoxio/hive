@@ -29,16 +29,18 @@ returns an error.
 
 ## Using the token
 
-Pass the token with `--token` (or `-t`) on every `send`, `poll`, `pull`, and
-`watch` call:
+Pass the token with `--token` (or `-t`) on every `send`, `poll`, `query`,
+`pull`, and `watch` call:
 
 ```bash
 TOKEN=$(room join my-room alice | jq -r .token)
 
 room send  my-room --token "$TOKEN" "hello everyone"
-room poll  my-room --token "$TOKEN"
+room poll  --token "$TOKEN"                        # all subscribed rooms
+room poll  my-room --token "$TOKEN"                # specific room
+room query --token "$TOKEN" --all -s "deploy"      # search all rooms
 room pull  my-room --token "$TOKEN" -n 50
-room watch my-room --token "$TOKEN" --interval 5
+room watch --token "$TOKEN" --interval 5           # all subscribed rooms
 ```
 
 The broker uses the token to resolve the sender's identity. No username

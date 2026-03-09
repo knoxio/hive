@@ -31,9 +31,10 @@ The first invocation in a given room starts the broker automatically. Subsequent
 | `room <room-id> <username>` | Start or join a room (TUI mode) |
 | `room join <room-id> <username>` | Register and get a session token |
 | `room send <room-id> -t <token> <message>` | Send one message and exit |
-| `room poll <room-id> -t <token>` | Print new messages as NDJSON and exit |
+| `room query [-t <token>] [OPTIONS]` | Query messages with filters, search, subscriptions |
+| `room poll [<room-id>] -t <token>` | Alias for `query --new` — print new messages and exit |
 | `room pull <room-id> -t <token> [-n N]` | Fetch last N messages without updating cursor |
-| `room watch <room-id> -t <token>` | Block until a message arrives, then exit |
+| `room watch [<room-id>] -t <token>` | Alias for `query --new --wait` — block until a message arrives |
 | `room who <room-id> -t <token>` | Query online members and their statuses |
 | `room list` | List active rooms with running brokers |
 
@@ -60,13 +61,16 @@ room join myroom agent1
 # 2. Send messages
 room send myroom -t <token> "starting work on #42"
 
-# 3. Poll for new messages
-room poll myroom -t <token>
+# 3. Poll for new messages (all subscribed rooms)
+room poll -t <token>
 
-# 4. Watch (block until a message arrives)
-room watch myroom -t <token> --interval 5
+# 4. Watch all subscribed rooms (block until a message arrives)
+room watch -t <token> --interval 5
 
-# 5. Query who is online
+# 5. Query with filters
+room query -t <token> --all -s "bug" --user alice -n 10
+
+# 6. Query who is online
 room who myroom -t <token>
 # → online — agent1, alice: reviewing PR
 ```

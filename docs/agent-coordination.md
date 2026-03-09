@@ -40,7 +40,10 @@ room join <room-id> <username>
 # Send a message (token required — it is not auto-read from file)
 room send <room-id> --token <token> 'your message here'
 
-# Check for new messages since last poll
+# Check for new messages (all subscribed rooms)
+room poll --token <token>
+
+# Check for new messages (specific room)
 room poll <room-id> --token <token>
 ```
 
@@ -132,13 +135,18 @@ Include:
 For agents that need to remain active without human re-prompting, use `room watch`:
 
 ```bash
+# Watch all subscribed rooms (auto-discovers daemon rooms)
+room watch --token <token> --interval 5
+
+# Watch a specific room
 room watch <room-id> --token <token> --interval 5
 ```
 
-This blocks until a message from another user arrives, then prints it and exits. Combine with a background task loop:
+This blocks until a message from another user arrives in any subscribed room, then prints it and exits. Messages are filtered by your per-room subscription tier. Combine with a background task loop:
 
 ```
-1. room watch <room-id> --token <token>   # run_in_background=true
+1. room watch --token <token>             # watches all subscribed rooms
+                                          # run_in_background=true
 2. Block on TaskOutput — exits when a message arrives
 3. Read the message, act on it
 4. room send <room-id> --token <token> "response"

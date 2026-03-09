@@ -40,26 +40,37 @@ room send <room-id> -t <token> your message here
 # Send a direct message to a specific user
 room send <room-id> -t <token> --to <recipient> your message here
 
-# Check for new messages since last poll — prints NDJSON and exits
-room poll <room-id> -t <token>
+# Poll for new messages (all subscribed rooms, auto-discovered)
+room poll -t <token>
 
-# Check messages since a specific ID (overrides stored cursor)
-room poll <room-id> -t <token> --since <message-id>
+# Poll a specific room
+room poll <room-id> -t <token>
 
 # Poll multiple rooms at once (messages merged by timestamp)
 room poll -t <token> --rooms room1,room2,room3
 
 # Filter to only messages that @mention you
 room poll <room-id> -t <token> --mentions-only
+
+# Query with filters: search, user, count, timestamps
+room query -t <token> --all -s "deploy" --user alice -n 10
+room query -t <token> --all --regex "PR #\d+"
 ```
 
-The cursor is stored at `/tmp/room-<id>-<username>.cursor` (username resolved from token). A second `room poll` with no `--since` returns only messages that arrived after the first call.
+The cursor is stored at `~/.room/state/room-<id>-<username>.cursor` (username resolved from token). A second `room poll` with no `--since` returns only messages that arrived after the first call.
+
+Messages are filtered by your per-room subscription tier (Full, MentionsOnly,
+Unsubscribed). Use `-p/--public` to bypass subscription filtering (requires another filter).
 
 ### Staying resident (autonomous loop)
 
-Use `room watch` — it blocks until a foreign message arrives, then exits. No external script needed.
+Use `room watch` — it blocks until a foreign message arrives in any subscribed room, then exits. No external script needed.
 
 ```bash
+# Watch all subscribed rooms (auto-discovers daemon rooms)
+room watch -t <token> --interval 5
+
+# Watch a specific room
 room watch <room-id> -t <token> --interval 5
 ```
 
@@ -436,14 +447,14 @@ crates/room-protocol/src/
                           parse_mentions, Message::content/mentions accessors
 
 crates/room-cli/src/
-  main.rs              — CLI parsing, subcommand dispatch (join / send / poll / pull / watch / who / list / daemon / create / destroy)
+  main.rs              — CLI parsing, subcommand dispatch (join / send / query / poll / pull / watch / who / list / daemon / create / destroy)
   lib.rs               — Re-exports all modules (required for integration tests)
   client.rs            — Connects to broker, runs TUI or agent mode, ensure_token auto-login
   message.rs           — Re-exports room_protocol::* + CLI-specific helpers
   history.rs           — NDJSON load/append
   registry.rs          — Persistent UserRegistry (user CRUD, token auth, room membership, global status)
   paths.rs             — Room filesystem path resolution (~/.room/state, ~/.room/data, runtime dirs)
-  query.rs             — QueryFilter for `room query` subcommand (regex, date, user filters)
+  query.rs             — QueryFilter struct, matches() method, has_narrowing_filter() for -p validation
   broker/
     mod.rs             — Accept loop, handle_client, handle_oneshot_send, run_interactive_session
     state.rs           — RoomState struct and type aliases (ClientMap, StatusMap, etc.)
@@ -467,8 +478,10 @@ crates/room-cli/src/
     mod.rs             — Re-exports, subcommand dispatch, slash command routing (build_wire_payload)
     transport.rs       — Socket connect, send_message, send_message_with_token
     token.rs           — Token file I/O, cursor read/write, cmd_join
-    poll.rs            — poll_messages, poll_messages_multi, pull_messages, cmd_poll,
-                          cmd_poll_multi, cmd_pull, cmd_watch (--mentions-only filter)
+    poll.rs            — cmd_query (unified engine: history/new/wait modes), cmd_poll,
+                          cmd_poll_multi, cmd_pull, poll_messages, poll_messages_multi,
+                          per-room subscription tier filtering, QueryOptions
+    list.rs            — cmd_list, discover_daemon_rooms (auto-discovery via .meta files)
     who.rs             — cmd_who: oneshot /who query
   tui/
     mod.rs             — Main run() loop and TUI state
@@ -581,7 +594,7 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 1006 Rust tests + 107 shell tests**
+**Current baseline: 1009 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 79 unit tests

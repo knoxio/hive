@@ -41,20 +41,62 @@ Prints the broadcast message JSON and exits.
 
 ---
 
+### `room query`
+
+```
+room query [<room-id>] --token <token> [OPTIONS]
+```
+
+Unified query engine for message history and real-time polling. Without flags,
+returns all messages (newest-first). `room poll` and `room watch` are aliases.
+
+| Flag | Description |
+|------|-------------|
+| `--token`, `-t` | Session token from `room join` (required) |
+| `-r, --room <rooms>` | Filter by room IDs (comma-separated) |
+| `--all` | Query all daemon-managed rooms |
+| `--new` | Only messages since last poll (advances cursor) |
+| `--wait` | Block until a new message arrives (implies `--new`) |
+| `--user <name>` | Filter by sender |
+| `-s, --search <text>` | Substring content search (case-sensitive) |
+| `--regex <pattern>` | Regex content search |
+| `-m, --mentions-only` | Only messages that @mention you |
+| `--from <room:seq>` | After this position (exclusive) |
+| `--to <room:seq>` | Before this position (inclusive) |
+| `--since <ISO8601>` | After this timestamp |
+| `--until <ISO8601>` | Before this timestamp |
+| `-n <count>` | Limit output to N messages |
+| `--asc` / `--desc` | Sort order (default: asc for `--new`, desc for history) |
+| `-p, --public` | Bypass subscription filter (requires another filter) |
+| `--id <room:seq>` | Look up a single message by ID |
+| `--interval <secs>` | Poll interval for `--wait` (default: 5) |
+
+**Room resolution:** When no room is specified, `--new` and `--wait` auto-discover
+all daemon rooms. `--all` explicitly opts into all rooms. Bare `room query` without
+a room source errors.
+
+**Subscription filtering:** Messages are filtered by your per-room subscription tier
+(Full, MentionsOnly, Unsubscribed) unless `-p` is used. `-p` requires at least one
+other narrowing filter.
+
+---
+
 ### `room poll`
 
 ```
-room poll <room-id> --token <token> [--since <message-id>]
+room poll [<room-id>] --token <token> [--since <message-id>] [--rooms r1,r2]
 ```
 
-Fetch new messages since your last poll and exit. Prints NDJSON to stdout.
-Updates a cursor file (`/tmp/room-<id>-<username>.cursor`) so subsequent
-calls return only unseen messages.
+Alias for `room query --new`. Fetch new messages since your last poll and exit.
+When no room is specified, auto-discovers all daemon rooms. Subscription tiers
+are respected per room.
 
 | Flag | Description |
 |------|-------------|
 | `--token`, `-t` | Session token from `room join` (required) |
 | `--since <id>` | Return messages after this ID, ignoring stored cursor |
+| `--rooms <r1,r2>` | Poll multiple rooms (comma-separated) |
+| `--mentions-only` | Only messages that @mention you |
 
 ---
 
@@ -78,17 +120,19 @@ re-reading recent context after a context reset.
 ### `room watch`
 
 ```
-room watch <room-id> --token <token> [--interval <secs>]
+room watch [<room-id>] --token <token> [--interval <secs>] [--rooms r1,r2]
 ```
 
-Block until at least one message from another user arrives, then print it as
-NDJSON and exit. Shares the cursor file with `room poll` so no messages are
-re-delivered. Useful for agents that need to wake on incoming messages.
+Alias for `room query --new --wait`. Block until at least one message from
+another user arrives, then print it as NDJSON and exit. When no room is
+specified, auto-discovers all daemon rooms and watches your full stream.
+Subscription tiers are respected per room.
 
 | Flag | Description |
 |------|-------------|
 | `--token`, `-t` | Session token from `room join` (required) |
 | `--interval <secs>` | Poll interval in seconds (default: 5) |
+| `--rooms <r1,r2>` | Watch multiple rooms (comma-separated) |
 
 ---
 
