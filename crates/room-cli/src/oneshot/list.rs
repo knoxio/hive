@@ -12,6 +12,34 @@ struct RoomInfo {
     chat_path: Option<String>,
 }
 
+/// Discover all daemon-managed rooms by scanning for `.meta` files in the
+/// runtime directory. Returns room IDs sorted alphabetically.
+///
+/// This is used by `room watch` and `room poll` when no room ID is specified —
+/// the agent listens to all rooms the daemon is managing.
+pub fn discover_daemon_rooms() -> Vec<String> {
+    discover_daemon_rooms_in(&crate::paths::room_runtime_dir())
+}
+
+/// Scan `dir` for `room-*.meta` files and return room IDs sorted alphabetically.
+fn discover_daemon_rooms_in(dir: &Path) -> Vec<String> {
+    let mut rooms = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if let Some(room_id) = name_str
+                .strip_prefix("room-")
+                .and_then(|s| s.strip_suffix(".meta"))
+            {
+                rooms.push(room_id.to_string());
+            }
+        }
+    }
+    rooms.sort();
+    rooms
+}
+
 /// Scan the platform runtime directory for `room-*.sock` files, verify each
 /// broker is alive via a short connect attempt, and print one NDJSON line per
 /// active room.
@@ -193,5 +221,44 @@ mod tests {
         let rooms = discover_rooms(dir.path()).await.unwrap();
         let names: Vec<&str> = rooms.iter().map(|r| r.room.as_str()).collect();
         assert_eq!(names, vec!["alpha", "mid", "zebra"]);
+    }
+
+    // ── discover_daemon_rooms_in ──────────────────────────────────────────
+
+    #[test]
+    fn discover_daemon_rooms_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(discover_daemon_rooms_in(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn discover_daemon_rooms_finds_meta_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("room-dev.meta"),
+            r#"{"chat_path":"/tmp/dev.chat"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("room-lobby.meta"),
+            r#"{"chat_path":"/tmp/lobby.chat"}"#,
+        )
+        .unwrap();
+        // Non-meta files should be ignored.
+        std::fs::write(dir.path().join("room-other.sock"), "").unwrap();
+        std::fs::write(dir.path().join("roomd.sock"), "").unwrap();
+
+        let rooms = discover_daemon_rooms_in(dir.path());
+        assert_eq!(rooms, vec!["dev", "lobby"]);
+    }
+
+    #[test]
+    fn discover_daemon_rooms_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["room-zebra.meta", "room-alpha.meta", "room-mid.meta"] {
+            std::fs::write(dir.path().join(name), "{}").unwrap();
+        }
+        let rooms = discover_daemon_rooms_in(dir.path());
+        assert_eq!(rooms, vec!["alpha", "mid", "zebra"]);
     }
 }

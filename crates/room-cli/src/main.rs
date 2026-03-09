@@ -149,11 +149,17 @@ enum Cmd {
     /// Polls the chat file on a configurable interval. Shares the cursor file with
     /// `room poll` and `room query --new` so no messages are re-delivered. Exits
     /// after printing the first batch of foreign messages as NDJSON.
+    ///
+    /// When no room ID or `--rooms` is given, watches all rooms on the daemon.
     Watch {
-        room_id: String,
+        /// Single room ID (omit to watch all daemon rooms)
+        room_id: Option<String>,
         /// Session token from `room join` (required)
         #[arg(short = 't', long)]
         token: String,
+        /// Watch multiple rooms (comma-separated or repeated). Merges messages by timestamp.
+        #[arg(long, value_delimiter = ',')]
+        rooms: Vec<String>,
         /// Poll interval in seconds (default: 5)
         #[arg(long, default_value_t = 5)]
         interval: u64,
@@ -472,8 +478,14 @@ async fn main() -> anyhow::Result<()> {
             } else if let Some(id) = room_id {
                 vec![id]
             } else {
-                eprintln!("error: room_id is required when --rooms is not given");
-                std::process::exit(1);
+                // Auto-discover all daemon rooms.
+                let discovered = oneshot::discover_daemon_rooms();
+                if discovered.is_empty() {
+                    anyhow::bail!(
+                        "no rooms found — specify a room ID, use --rooms, or ensure the daemon is running"
+                    );
+                }
+                discovered
             };
 
             let filter = QueryFilter {
@@ -499,10 +511,24 @@ async fn main() -> anyhow::Result<()> {
         Some(Cmd::Watch {
             room_id,
             token,
+            rooms,
             interval,
         }) => {
             // Alias for `room query --new --wait`. Delegates to cmd_query.
-            let effective_rooms = vec![room_id];
+            let effective_rooms: Vec<String> = if !rooms.is_empty() {
+                rooms
+            } else if let Some(id) = room_id {
+                vec![id]
+            } else {
+                // Auto-discover all daemon rooms.
+                let discovered = oneshot::discover_daemon_rooms();
+                if discovered.is_empty() {
+                    anyhow::bail!(
+                        "no rooms found — specify a room ID, use --rooms, or ensure the daemon is running"
+                    );
+                }
+                discovered
+            };
             let filter = QueryFilter {
                 rooms: effective_rooms.clone(),
                 ascending: true,
