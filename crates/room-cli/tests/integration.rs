@@ -3226,8 +3226,7 @@ async fn scripted_daemon_multi_room_isolation() {
     daemon_send(&td.socket_path, "room-beta", &tok_b, "beta msg").await;
 
     // agent-c joins room-alpha — should see alpha msg but NOT beta msg
-    let (mut reader_c, _writer_c) =
-        daemon_connect(&td.socket_path, "room-alpha", "agent-c").await;
+    let (mut reader_c, _writer_c) = daemon_connect(&td.socket_path, "room-alpha", "agent-c").await;
 
     // Drain all messages with a short timeout, check for alpha/beta
     let mut saw_alpha = false;
