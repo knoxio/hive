@@ -1953,7 +1953,7 @@ dependencies = [
 
 [[package]]
 name = "room-cli"
-version = "3.0.0-rc.2"
+version = "3.0.0-rc.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -1978,7 +1978,7 @@ dependencies = [
 
 [[package]]
 name = "room-protocol"
-version = "3.0.0-rc.2"
+version = "3.0.0-rc.3"
 dependencies = [
  "chrono",
  "serde",
