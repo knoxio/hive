@@ -1,6 +1,6 @@
 [package]
 name = "room-cli"
-version = "3.0.0-rc.5"
+version = "3.0.0-rc.6"
 edition = "2021"
 description = "Multi-user chat room for agent/human coordination over Unix domain sockets"
 license = "MIT"
@@ -18,7 +18,7 @@ name = "room"
 path = "src/main.rs"
 
 [dependencies]
-room-protocol = { path = "../room-protocol", version = "3.0.0-rc.5" }
+room-protocol = { path = "../room-protocol", version = "3.0.0-rc.6" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
