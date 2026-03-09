@@ -551,11 +551,11 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 694 Rust tests + 107 shell tests**
+**Current baseline: 702 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 47 unit tests
-- room-cli: 414 unit + 83 integration + 5 smoke = 502 tests
+- room-cli: 414 unit + 91 integration + 5 smoke = 510 tests
 - room-ralph: 132 unit + 8 integration = 140 tests (+ 1 ignored live-broker test)
 - agentroom: 5 integration tests (deprecation shim)
 
