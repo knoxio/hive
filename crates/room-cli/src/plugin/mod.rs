@@ -341,6 +341,7 @@ const RESERVED_COMMANDS: &[&str] = &[
     "exit",
     "clear",
     "subscribe",
+    "set_subscription",
     "unsubscribe",
     "subscriptions",
 ];
@@ -575,6 +576,17 @@ pub fn builtin_command_infos() -> Vec<CommandInfo> {
             name: "subscribe".to_owned(),
             description: "Subscribe to this room".to_owned(),
             usage: "/subscribe [tier]".to_owned(),
+            params: vec![ParamSchema {
+                name: "tier".to_owned(),
+                param_type: ParamType::Choice(vec!["full".to_owned(), "mentions_only".to_owned()]),
+                required: false,
+                description: "Subscription tier (default: full)".to_owned(),
+            }],
+        },
+        CommandInfo {
+            name: "set_subscription".to_owned(),
+            description: "Alias for /subscribe — set subscription tier for this room".to_owned(),
+            usage: "/set_subscription [tier]".to_owned(),
             params: vec![ParamSchema {
                 name: "tier".to_owned(),
                 param_type: ParamType::Choice(vec!["full".to_owned(), "mentions_only".to_owned()]),
@@ -851,6 +863,7 @@ mod tests {
             "clear",
             "room-info",
             "subscribe",
+            "set_subscription",
             "unsubscribe",
             "subscriptions",
         ] {

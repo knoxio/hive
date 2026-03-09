@@ -179,7 +179,7 @@ pub(crate) async fn route_command(
         }
 
         // Subscription commands.
-        if cmd == "subscribe" {
+        if cmd == "subscribe" || cmd == "set_subscription" {
             let tier_str = params.first().map(String::as_str).unwrap_or("full");
             let tier: SubscriptionTier = match tier_str.parse() {
                 Ok(t) => t,
@@ -1134,6 +1134,49 @@ mod tests {
     }
 
     // ── subscription commands ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn set_subscription_alias_works() {
+        let tmp = NamedTempFile::new().unwrap();
+        let state = make_state(tmp.path().to_path_buf());
+        let msg = make_command(
+            "test-room",
+            "alice",
+            "set_subscription",
+            vec!["full".to_owned()],
+        );
+        let result = route_command(msg, "alice", &state).await.unwrap();
+        let CommandResult::HandledWithReply(json) = result else {
+            panic!("expected HandledWithReply");
+        };
+        assert!(json.contains("subscribed"));
+        assert!(json.contains("full"));
+        assert_eq!(
+            *state.subscription_map.lock().await.get("alice").unwrap(),
+            SubscriptionTier::Full
+        );
+    }
+
+    #[tokio::test]
+    async fn set_subscription_alias_mentions_only() {
+        let tmp = NamedTempFile::new().unwrap();
+        let state = make_state(tmp.path().to_path_buf());
+        let msg = make_command(
+            "test-room",
+            "bob",
+            "set_subscription",
+            vec!["mentions_only".to_owned()],
+        );
+        let result = route_command(msg, "bob", &state).await.unwrap();
+        let CommandResult::HandledWithReply(json) = result else {
+            panic!("expected HandledWithReply");
+        };
+        assert!(json.contains("subscribed"));
+        assert_eq!(
+            *state.subscription_map.lock().await.get("bob").unwrap(),
+            SubscriptionTier::MentionsOnly
+        );
+    }
 
     #[tokio::test]
     async fn subscribe_default_tier_is_full() {
