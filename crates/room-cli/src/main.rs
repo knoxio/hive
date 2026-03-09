@@ -53,7 +53,7 @@ enum Cmd {
     /// Flags compose freely: `-r dev -n 20 --user alice --new` returns the 20 most
     /// recent messages from alice in the dev room that arrived since your last poll.
     Query {
-        /// Single room ID (omit when using -r/--room)
+        /// Single room ID (omit when using -r/--room or --all)
         room_id: Option<String>,
         /// Session token from `room join` (required)
         #[arg(short = 't', long)]
@@ -61,6 +61,10 @@ enum Cmd {
         /// Filter by room IDs — comma-separated or repeated (overrides positional room_id)
         #[arg(short = 'r', long = "room", value_delimiter = ',')]
         rooms: Vec<String>,
+        /// Query all daemon-managed rooms (auto-discovered). Implicit when --new or --wait
+        /// is used without -r.
+        #[arg(long)]
+        all: bool,
         /// Only include messages sent by this user
         #[arg(long)]
         user: Option<String>,
@@ -82,6 +86,12 @@ enum Cmd {
         /// Only messages that @mention the caller
         #[arg(short = 'm', long = "mentions-only")]
         mentions_only: bool,
+        /// Substring content search (case-sensitive)
+        #[arg(short = 's', long = "search")]
+        search: Option<String>,
+        /// Regex content search
+        #[arg(long)]
+        regex: Option<String>,
         /// Return only new messages since last poll (advances cursor)
         #[arg(long)]
         new: bool,
@@ -97,11 +107,11 @@ enum Cmd {
         /// Poll interval in seconds when --wait is used (default: 5)
         #[arg(long, default_value_t = 5)]
         interval: u64,
-        /// Bypass subscription filter — query any public room regardless of subscription.
+        /// Bypass subscription filter — query any room regardless of subscription.
         ///
         /// Must be combined with at least one narrowing filter (-n, -r, --user, --from,
-        /// --to, --since, --until, --id, or a content search). DM privacy is still
-        /// enforced regardless of this flag.
+        /// --to, --since, --until, --id, --all, --new, --wait, -s, --regex, or -m).
+        /// DM privacy is still enforced regardless of this flag.
         #[arg(short = 'p', long = "public")]
         public: bool,
         /// Look up a single message by ID — format `<room>:<seq>` (e.g. `dev:42`).
@@ -341,6 +351,7 @@ async fn main() -> anyhow::Result<()> {
             room_id,
             token,
             rooms,
+            all,
             user,
             from,
             to,
@@ -348,6 +359,8 @@ async fn main() -> anyhow::Result<()> {
             until,
             count,
             mentions_only,
+            search,
+            regex,
             new,
             wait,
             asc,
@@ -357,6 +370,8 @@ async fn main() -> anyhow::Result<()> {
             id,
         }) => {
             // Resolve the effective room list.
+            // --all or implicit --all (--new/--wait without -r) auto-discovers.
+            let use_all = all || ((new || wait) && rooms.is_empty() && room_id.is_none());
             let effective_rooms: Vec<String> = if !rooms.is_empty() {
                 if room_id.is_some() {
                     anyhow::bail!(
@@ -366,9 +381,17 @@ async fn main() -> anyhow::Result<()> {
                 rooms
             } else if let Some(id) = room_id {
                 vec![id]
+            } else if use_all {
+                let discovered = oneshot::discover_daemon_rooms();
+                if discovered.is_empty() {
+                    anyhow::bail!(
+                        "no rooms found — ensure the daemon is running with active rooms"
+                    );
+                }
+                discovered
             } else {
                 anyhow::bail!(
-                    "room_id is required — pass it as a positional argument or use -r/--room"
+                    "room_id is required — pass it as a positional argument, use -r/--room, or --all"
                 );
             };
 
@@ -433,6 +456,8 @@ async fn main() -> anyhow::Result<()> {
             let filter = QueryFilter {
                 rooms: effective_rooms.clone(),
                 users: user.map(|u| vec![u]).unwrap_or_default(),
+                content_search: search,
+                content_regex: regex,
                 after_seq,
                 before_seq,
                 after_ts,
@@ -445,10 +470,10 @@ async fn main() -> anyhow::Result<()> {
             };
 
             // -p/--public requires at least one narrowing filter.
-            if public && !has_narrowing_filter(&filter) {
+            if public && !has_narrowing_filter(&filter, new || wait) {
                 anyhow::bail!(
                     "-p/--public requires at least one narrowing filter (-n, -r, --user, \
-                     --from, --to, --since, --until, --id, or a content search)"
+                     --from, --to, --since, --until, --id, --all, --new, --wait, -s, --regex, or -m)"
                 );
             }
 

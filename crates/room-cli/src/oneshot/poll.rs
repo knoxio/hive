@@ -39,6 +39,33 @@ fn apply_tier_filter(messages: &mut Vec<Message>, tier: SubscriptionTier, userna
     }
 }
 
+/// Apply per-room subscription-tier filtering to a message list in place.
+///
+/// Looks up the user's tier for each message's room and filters accordingly.
+/// Each room is checked independently — a user can be `Full` in one room and
+/// `Unsubscribed` in another.
+fn apply_per_room_tier_filter(messages: &mut Vec<Message>, room_ids: &[String], username: &str) {
+    use std::collections::HashMap;
+    let tiers: HashMap<&str, SubscriptionTier> = room_ids
+        .iter()
+        .map(|r| (r.as_str(), load_user_tier(r, username)))
+        .collect();
+
+    messages.retain(|m| {
+        let tier = tiers
+            .get(m.room())
+            .copied()
+            .unwrap_or(SubscriptionTier::Full);
+        match tier {
+            SubscriptionTier::Full => true,
+            SubscriptionTier::MentionsOnly => {
+                m.mentions().iter().any(|mention| mention == username)
+            }
+            SubscriptionTier::Unsubscribed => false,
+        }
+    });
+}
+
 // ── Query engine types ─────────────────────────────────────────────────────────
 
 /// Options for the `room query` subcommand (and `poll`/`watch` aliases).
@@ -290,20 +317,6 @@ pub async fn cmd_query(
 
     let username = resolve_username_from_rooms(room_ids, token)?;
 
-    // Apply subscription-tier filtering unless -p/--public bypasses it.
-    if !filter.public_only {
-        let tier = load_user_tier(&room_ids[0], &username);
-        match tier {
-            SubscriptionTier::Unsubscribed => return Ok(()),
-            SubscriptionTier::MentionsOnly => {
-                if filter.mention_user.is_none() {
-                    filter.mention_user = Some(username.clone());
-                }
-            }
-            SubscriptionTier::Full => {}
-        }
-    }
-
     // Resolve mention_user from caller if mentions_only is requested.
     if opts.mentions_only {
         filter.mention_user = Some(username.clone());
@@ -350,11 +363,15 @@ async fn cmd_query_new(
             poll_messages_multi(&room_refs, username).await?
         };
 
-        // Apply filter, then optional sort + limit.
+        // Apply query filter, per-room subscription tiers, then sort + limit.
         let mut filtered: Vec<Message> = messages
             .into_iter()
             .filter(|m| filter.matches(m, m.room()))
             .collect();
+
+        if !filter.public_only {
+            apply_per_room_tier_filter(&mut filtered, room_ids, username);
+        }
 
         apply_sort_and_limit(&mut filtered, &filter);
 
@@ -410,6 +427,10 @@ async fn cmd_query_history(
             _ => true,
         })
         .collect();
+
+    if !filter.public_only {
+        apply_per_room_tier_filter(&mut filtered, room_ids, username);
+    }
 
     apply_sort_and_limit(&mut filtered, &filter);
 
@@ -1330,6 +1351,71 @@ mod tests {
             Some("bob".to_string()),
             "existing mention_user filter should be preserved"
         );
+    }
+
+    // ── per-room subscription tier filtering tests ─────────────────────────
+
+    #[test]
+    fn per_room_tier_filter_full_keeps_all() {
+        let mut msgs = vec![
+            make_message("dev", "alice", "hello from dev"),
+            make_message("lobby", "bob", "hello from lobby"),
+        ];
+        // No subscription files → defaults to Full for both rooms.
+        let rooms = vec![
+            "nonexistent-perroom-full-1".to_string(),
+            "nonexistent-perroom-full-2".to_string(),
+        ];
+        apply_per_room_tier_filter(&mut msgs, &rooms, "carol");
+        assert_eq!(msgs.len(), 2);
+    }
+
+    #[test]
+    fn per_room_tier_filter_mixed_tiers() {
+        let state_dir = crate::paths::room_state_dir();
+        let _ = std::fs::create_dir_all(&state_dir);
+
+        let room_full = format!("perroom-mixed-full-{}", std::process::id());
+        let room_unsub = format!("perroom-mixed-unsub-{}", std::process::id());
+        let room_mentions = format!("perroom-mixed-ment-{}", std::process::id());
+
+        // Write subscription maps: room_full=Full (default), room_unsub=Unsubscribed, room_mentions=MentionsOnly
+        let sub_unsub = crate::paths::broker_subscriptions_path(&state_dir, &room_unsub);
+        let mut map_unsub = std::collections::HashMap::new();
+        map_unsub.insert("alice".to_string(), SubscriptionTier::Unsubscribed);
+        std::fs::write(&sub_unsub, serde_json::to_string(&map_unsub).unwrap()).unwrap();
+
+        let sub_ment = crate::paths::broker_subscriptions_path(&state_dir, &room_mentions);
+        let mut map_ment = std::collections::HashMap::new();
+        map_ment.insert("alice".to_string(), SubscriptionTier::MentionsOnly);
+        std::fs::write(&sub_ment, serde_json::to_string(&map_ment).unwrap()).unwrap();
+
+        let mut msgs = vec![
+            make_message(&room_full, "bob", "visible in full room"),
+            make_message(&room_unsub, "bob", "invisible — unsubscribed"),
+            make_message(&room_mentions, "bob", "no mention — filtered"),
+            make_message(&room_mentions, "bob", "hey @alice check this"),
+        ];
+
+        let rooms = vec![room_full.clone(), room_unsub.clone(), room_mentions.clone()];
+        apply_per_room_tier_filter(&mut msgs, &rooms, "alice");
+
+        // Only the Full room message and the MentionsOnly room @alice message survive.
+        assert_eq!(msgs.len(), 2);
+        assert!(msgs[0].content().unwrap().contains("visible in full room"));
+        assert!(msgs[1].content().unwrap().contains("@alice"));
+
+        // Cleanup
+        let _ = std::fs::remove_file(&sub_unsub);
+        let _ = std::fs::remove_file(&sub_ment);
+    }
+
+    #[test]
+    fn per_room_tier_filter_unknown_room_defaults_to_full() {
+        let mut msgs = vec![make_message("mystery", "bob", "hello")];
+        // Room not in the room_ids list at all — tier defaults to Full.
+        apply_per_room_tier_filter(&mut msgs, &["other".to_string()], "alice");
+        assert_eq!(msgs.len(), 1);
     }
 
     /// pull_messages returns the last n entries without moving the cursor.

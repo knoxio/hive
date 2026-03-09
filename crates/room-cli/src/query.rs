@@ -160,9 +160,10 @@ impl QueryFilter {
 /// Used to validate that the `-p/--public` flag is not used alone. The
 /// narrowing criteria are: rooms, users, content_search, content_regex,
 /// after_seq, before_seq, after_ts, before_ts, mention_user, target_id,
-/// or a `limit`.
-pub fn has_narrowing_filter(filter: &QueryFilter) -> bool {
-    !filter.rooms.is_empty()
+/// limit, or `--new`/`--wait` (passed via `new_or_wait`).
+pub fn has_narrowing_filter(filter: &QueryFilter, new_or_wait: bool) -> bool {
+    new_or_wait
+        || !filter.rooms.is_empty()
         || !filter.users.is_empty()
         || filter.content_search.is_some()
         || filter.content_regex.is_some()
@@ -636,7 +637,7 @@ mod tests {
 
     #[test]
     fn has_narrowing_filter_empty_is_false() {
-        assert!(!has_narrowing_filter(&QueryFilter::default()));
+        assert!(!has_narrowing_filter(&QueryFilter::default(), false));
     }
 
     #[test]
@@ -645,7 +646,7 @@ mod tests {
             rooms: vec!["r".into()],
             ..Default::default()
         };
-        assert!(has_narrowing_filter(&f));
+        assert!(has_narrowing_filter(&f, false));
     }
 
     #[test]
@@ -654,7 +655,7 @@ mod tests {
             limit: Some(10),
             ..Default::default()
         };
-        assert!(has_narrowing_filter(&f));
+        assert!(has_narrowing_filter(&f, false));
     }
 
     #[test]
@@ -663,7 +664,7 @@ mod tests {
             target_id: Some(("r".into(), 1)),
             ..Default::default()
         };
-        assert!(has_narrowing_filter(&f));
+        assert!(has_narrowing_filter(&f, false));
     }
 
     #[test]
@@ -672,7 +673,7 @@ mod tests {
             content_search: Some("foo".into()),
             ..Default::default()
         };
-        assert!(has_narrowing_filter(&f));
+        assert!(has_narrowing_filter(&f, false));
     }
 
     #[test]
@@ -682,7 +683,21 @@ mod tests {
             public_only: true,
             ..Default::default()
         };
-        assert!(!has_narrowing_filter(&f));
+        assert!(!has_narrowing_filter(&f, false));
+    }
+
+    #[test]
+    fn has_narrowing_filter_new_or_wait_is_true() {
+        assert!(has_narrowing_filter(&QueryFilter::default(), true));
+    }
+
+    #[test]
+    fn has_narrowing_filter_content_regex_is_true() {
+        let f = QueryFilter {
+            content_regex: Some(r"\d+".into()),
+            ..Default::default()
+        };
+        assert!(has_narrowing_filter(&f, false));
     }
 
     // ── combined filters ──────────────────────────────────────────────────────

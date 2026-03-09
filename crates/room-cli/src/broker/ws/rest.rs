@@ -357,7 +357,7 @@ pub(super) async fn api_query(
     let filter = build_query_filter(&params, &room_id);
 
     // `public=true` alone is not a valid query — require at least one narrowing param.
-    if filter.public_only && !has_narrowing_filter(&filter) {
+    if filter.public_only && !has_narrowing_filter(&filter, false) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
@@ -708,7 +708,7 @@ pub(super) async fn daemon_api_query(
     let filter = build_query_filter(&params, &room_id);
 
     // `public=true` alone is not a valid query — require at least one narrowing param.
-    if filter.public_only && !has_narrowing_filter(&filter) {
+    if filter.public_only && !has_narrowing_filter(&filter, false) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
