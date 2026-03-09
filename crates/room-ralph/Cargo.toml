@@ -1,6 +1,6 @@
 [package]
 name = "room-ralph"
-version = "0.3.0-rc.2"
+version = "0.4.0-rc.1"
 edition = "2021"
 description = "Autonomous agent wrapper for room — runs claude -p with auto-restart on context exhaustion"
 license = "MIT"
@@ -15,7 +15,7 @@ name = "room-ralph"
 path = "src/main.rs"
 
 [dependencies]
-room-protocol = { path = "../room-protocol", version = "2.1.0-rc.2" }
+room-protocol = { path = "../room-protocol", version = "3.0.0-rc.1" }
 clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
