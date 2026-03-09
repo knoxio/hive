@@ -102,10 +102,43 @@ const DAEMON_START_TIMEOUT_MS: u64 = 5_000;
 /// Returns an error if the process cannot be spawned or if the socket does not
 /// become connectable within the timeout.
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
-    let exe = std::env::current_exe()
-        .map_err(|e| anyhow::anyhow!("cannot resolve current executable: {e}"))?;
+    let exe = resolve_daemon_binary()?;
     // Respect ROOM_SOCKET env var when deciding where to start/find the daemon.
     ensure_daemon_running_impl(&crate::paths::effective_socket_path(None), &exe).await
+}
+
+/// Resolve which binary to spawn as the daemon.
+///
+/// Resolution order:
+/// 1. `ROOM_BINARY` env var (explicit override for testing).
+/// 2. `which room` — the installed binary on `$PATH`.
+/// 3. `current_exe()` — fallback to the running binary.
+///
+/// Using the installed binary (not `current_exe()`) ensures all agents
+/// converge on a single shared daemon regardless of which git worktree
+/// they run from.
+fn resolve_daemon_binary() -> anyhow::Result<std::path::PathBuf> {
+    // 1. Explicit override.
+    if let Ok(p) = std::env::var("ROOM_BINARY") {
+        let path = std::path::PathBuf::from(&p);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    // 2. Installed binary on PATH.
+    if let Ok(output) = std::process::Command::new("which").arg("room").output() {
+        if output.status.success() {
+            let path_str = String::from_utf8_lossy(&output.stdout);
+            let path = std::path::PathBuf::from(path_str.trim());
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+
+    // 3. Fallback to current executable.
+    std::env::current_exe().map_err(|e| anyhow::anyhow!("cannot resolve daemon binary: {e}"))
 }
 
 /// Test-visible variant: accepts explicit socket and exe paths so tests can
@@ -528,5 +561,66 @@ mod tests {
             assert!(target.daemon_room.is_none());
         }
         // If daemon IS running, skip (we can't test both branches in one call).
+    }
+
+    // ── resolve_daemon_binary ────────────────────────────────────────────────
+
+    /// Env var access is process-global; serialize tests that mutate it.
+    static TRANSPORT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn resolve_daemon_binary_uses_room_binary_env() {
+        let _lock = TRANSPORT_ENV_LOCK.lock().unwrap();
+        let key = "ROOM_BINARY";
+        let prev = std::env::var(key).ok();
+
+        // Point ROOM_BINARY at a real binary that exists.
+        let target = std::env::current_exe().unwrap();
+        std::env::set_var(key, &target);
+        let result = resolve_daemon_binary().unwrap();
+        assert_eq!(result, target, "should use ROOM_BINARY when set");
+
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    #[test]
+    fn resolve_daemon_binary_ignores_nonexistent_room_binary() {
+        let _lock = TRANSPORT_ENV_LOCK.lock().unwrap();
+        let key = "ROOM_BINARY";
+        let prev = std::env::var(key).ok();
+
+        std::env::set_var(key, "/nonexistent/path/to/room");
+        let result = resolve_daemon_binary().unwrap();
+        // Should NOT be the nonexistent path — falls through to which/current_exe.
+        assert_ne!(
+            result,
+            std::path::PathBuf::from("/nonexistent/path/to/room"),
+            "should skip ROOM_BINARY when path does not exist"
+        );
+
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    #[test]
+    fn resolve_daemon_binary_falls_back_without_env() {
+        let _lock = TRANSPORT_ENV_LOCK.lock().unwrap();
+        let key = "ROOM_BINARY";
+        let prev = std::env::var(key).ok();
+
+        std::env::remove_var(key);
+        let result = resolve_daemon_binary().unwrap();
+        // Should resolve to either `which room` or current_exe — either way a real path.
+        assert!(result.exists(), "resolved binary should exist: {result:?}");
+
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
     }
 }
