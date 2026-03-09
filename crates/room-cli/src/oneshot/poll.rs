@@ -956,6 +956,9 @@ mod tests {
 
     fn write_token_file(_dir: &TempDir, room_id: &str, username: &str, token: &str) {
         let path = token_path(room_id, username);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         let data = serde_json::json!({ "username": username, "token": token });
         std::fs::write(&path, format!("{data}\n")).unwrap();
     }
