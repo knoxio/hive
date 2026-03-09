@@ -300,6 +300,7 @@ pub(crate) async fn run_interactive_session(
         eprintln!("[broker] broadcast_and_persist(join) failed: {e:#}");
         return Ok(());
     }
+    state.plugin_registry.notify_join(&username);
 
     // Wrap write half in Arc<Mutex> for shared use by outbound and inbound tasks
     let write_half = Arc::new(Mutex::new(write_half));
@@ -445,6 +446,7 @@ pub(crate) async fn run_interactive_session(
         &state.seq_counter,
     )
     .await;
+    state.plugin_registry.notify_leave(&username);
     eprintln!("[broker] {username} left (cid={cid})");
 
     Ok(())
