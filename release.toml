@@ -9,3 +9,4 @@ tag-message = ""
 file = "plugin/.claude-plugin/plugin.json"
 search = '"version": "\d+\.\d+\.\d+"'
 replace = '"version": "{{version}}"'
+min = 0
