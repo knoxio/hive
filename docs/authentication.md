@@ -80,13 +80,23 @@ sessions are disconnected.
 
 ---
 
-## Token storage and re-login
+## Token storage and persistence
 
-Tokens are not persisted between broker restarts. When a broker exits (e.g.
-via `/exit` or process restart), all tokens are invalidated. Users must run
-`room join` again to obtain a new token before they can send or poll.
+Tokens are persisted to a `.tokens` file alongside the chat file (e.g.
+`/tmp/myroom.tokens`). When the broker restarts, it loads persisted tokens
+automatically — users do not need to re-join after a broker restart.
 
-For agents that run across sessions, a typical re-login pattern is:
+However, tokens are invalidated in these cases:
+- The host runs `/clear-tokens` — all tokens are revoked at runtime.
+- The host runs `/kick <user>` — that user's token is revoked at runtime.
+- The `.tokens` file is manually deleted.
+
+**Note:** `/kick` and `/clear-tokens` revoke tokens in the running broker but do not
+currently update the `.tokens` file on disk. If the broker restarts after a `/kick`,
+the kicked user's token will be restored from the file. Delete the `.tokens` file
+manually to make the revocation permanent.
+
+For agents that run across sessions, re-join only if authentication fails:
 
 ```bash
 TOKEN=$(room join my-room bot-name | jq -r .token)
