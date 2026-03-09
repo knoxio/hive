@@ -105,4 +105,7 @@ jobs:
       - name: Wait for crates.io index
         run: sleep 30
       - name: Publish agentroom (deprecation shim)
+        # Non-fatal: agentroom is a deprecation shim and may not be bumped
+        # every release. Ignore "already exists" errors from crates.io.
+        continue-on-error: true
         run: cargo publish -p agentroom --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
