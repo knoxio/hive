@@ -317,7 +317,8 @@ justification. Types of tests expected:
 
 - **Unit tests**: for pure logic, data structures, helpers. Place in `#[cfg(test)] mod tests`
   inside the source file.
-- **Integration tests**: for end-to-end flows through the broker. Place in `tests/integration.rs`.
+- **Integration tests**: for end-to-end flows through the broker. Place in the appropriate
+  module under `tests/` (auth.rs, broker.rs, daemon.rs, oneshot.rs, rest_query.rs, etc.).
 - If your change is a bug fix, add a regression test that fails without the fix.
 
 ### Agent memory convention
@@ -449,10 +450,15 @@ crates/room-cli/src/
     state.rs           — RoomState struct and type aliases (ClientMap, StatusMap, etc.)
     auth.rs            — Token issuance (issue_token), validation (validate_token),
                           token persistence (save/load_token_map, token_file_path)
-    commands.rs        — Unified command routing (route_command, handle_admin_cmd, dispatch_plugin, validate_params)
-    daemon.rs          — Multi-room daemon (DaemonState, room lifecycle, ROOM: handshake, UDS dispatch)
+    admin.rs           — Admin command handlers (/kick, /reauth, /clear-tokens, /exit, /clear)
+    commands.rs        — Unified command routing (route_command, dispatch_plugin, validate_params)
+    daemon.rs          — Multi-room daemon (DaemonState, room lifecycle, UDS dispatch)
     fanout.rs          — broadcast_and_persist, dm_and_persist
-    ws.rs              — WebSocket upgrade, REST endpoints, WS session lifecycle, daemon REST handlers
+    handshake.rs       — ClientHandshake + DaemonPrefix enums, parse_client_handshake, parse_daemon_prefix
+    service.rs         — RoomService trait (DIP: REST handlers depend on trait, not RoomState internals)
+    ws/
+      mod.rs           — WebSocket upgrade, WS session lifecycle, create_router/create_daemon_router
+      rest.rs          — REST endpoints (join, send, poll, query, health, daemon room create)
   plugin/
     mod.rs             — Plugin trait, PluginRegistry, CommandContext, HistoryReader, ChatWriter,
                           ParamSchema, ParamType, builtin_command_infos, all_known_commands
@@ -467,11 +473,19 @@ crates/room-cli/src/
     who.rs             — cmd_who: oneshot /who query
   tui/
     mod.rs             — Main run() loop and TUI state
-    input.rs           — InputState, handle_key, Action enum
+    input.rs           — InputState, handle_key (thin dispatch), per-key handlers, Action enum
     render.rs          — format_message, wrap_words, rendering helpers
+    render_bots.rs     — Bot avatar rendering (extracted from render.rs)
     widgets.rs         — CommandPalette (dynamic, schema-driven), MentionPicker
 crates/room-cli/tests/
-  integration.rs       — Integration tests against a live broker (UDS + WS)
+  auth.rs              — Token and authentication tests
+  broker.rs            — UDS broker lifecycle tests
+  daemon.rs            — Daemon multi-room tests
+  oneshot.rs           — One-shot command tests (join, send, poll)
+  rest_query.rs        — REST query endpoint tests
+  room_lifecycle.rs    — Room create/destroy tests
+  scripted.rs          — Multi-agent scripted scenario tests
+  ws.rs                — WebSocket transport tests
   ws_smoke.rs          — End-to-end smoke tests spawning the real binary with --ws-port
 
 crates/room-ralph/src/
@@ -524,6 +538,12 @@ Key invariants to preserve:
 - **Verify diffs before force-pushing** — always run `git diff origin/master..HEAD` before
   force-pushing a rebased branch. Rebase regressions (reverting merged code) were the #1
   process issue in sprint 8.
+- **RoomService trait for REST handlers** — REST endpoints in `broker/ws/rest.rs` must use
+  the `RoomService` trait (defined in `broker/service.rs`) instead of accessing `RoomState`
+  fields directly. WS handlers may still use `RoomState` for socket lifecycle.
+- **Clippy complexity thresholds** — `clippy.toml` enforces `cognitive-complexity-threshold = 30`,
+  `too-many-lines-threshold = 600`, `too-many-arguments-threshold = 7`. Do not raise these
+  without justification. `cargo clippy -- -D warnings` fails on violations.
 - **All tests must pass** before committing: `cargo test`.
 
 ## Pre-push checklist
@@ -562,13 +582,16 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 912 Rust tests + 107 shell tests**
+**Current baseline: 995 Rust tests + 107 shell tests**
 
 Rust breakdown:
-- room-protocol: 72 unit tests
-- room-cli: 567 unit + 119 integration + 5 smoke = 691 tests
+- room-protocol: 79 unit tests
+- room-cli: 635 unit + 132 integration (auth+broker+daemon+oneshot+rest+lifecycle+scripted+ws) + 5 smoke = 772 tests
 - room-ralph: 136 unit + 8 integration = 144 tests (+ 1 ignored live-broker test)
 - agentroom: 5 integration tests (deprecation shim)
+
+Note: integration tests are split into focused modules under `tests/` (auth, broker, daemon,
+oneshot, rest_query, room_lifecycle, scripted, ws). No single `integration.rs` file.
 
 Shell breakdown:
 - test-context-monitor.sh: 48 tests
