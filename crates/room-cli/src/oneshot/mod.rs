@@ -1,5 +1,6 @@
 pub mod list;
 pub mod poll;
+pub mod subscribe;
 pub mod token;
 pub mod transport;
 pub mod who;
@@ -9,6 +10,7 @@ pub use poll::{
     cmd_poll, cmd_poll_multi, cmd_pull, cmd_query, cmd_watch, poll_messages, poll_messages_multi,
     pull_messages, QueryOptions,
 };
+pub use subscribe::cmd_subscribe;
 pub use token::{cmd_join, token_file_path, username_from_token, username_from_token_any_room};
 pub use transport::{create_room, destroy_room};
 pub use transport::{

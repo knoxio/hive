@@ -174,6 +174,23 @@ enum Cmd {
         #[arg(long, default_value_t = 5)]
         interval: u64,
     },
+    /// Set your subscription tier for a room.
+    ///
+    /// Sends `/subscribe [tier]` to the broker and prints the broker confirmation.
+    /// Valid tiers: `full` (default, receive all messages) or `mentions_only`
+    /// (receive only messages that @mention you).
+    Subscribe {
+        room_id: String,
+        /// Session token from `room join` (required)
+        #[arg(short = 't', long)]
+        token: String,
+        /// Subscription tier: `full` or `mentions_only` (default: full)
+        #[arg(default_value = "full")]
+        tier: String,
+        /// Override the broker socket path (default: auto-discover daemon or per-room socket)
+        #[arg(long)]
+        socket: Option<PathBuf>,
+    },
     /// Query who is online and their status.
     ///
     /// Sends `/who` to the broker and prints the member list with statuses.
@@ -570,6 +587,17 @@ async fn main() -> anyhow::Result<()> {
                 since_uuid: None,
             };
             oneshot::cmd_query(&effective_rooms, &token, filter, opts).await?;
+        }
+        Some(Cmd::Subscribe {
+            room_id,
+            token,
+            tier,
+            socket,
+        }) => {
+            if socket.is_none() {
+                oneshot::ensure_daemon_running().await?;
+            }
+            oneshot::cmd_subscribe(&room_id, &token, &tier, socket.as_deref()).await?;
         }
         Some(Cmd::Who {
             room_id,
