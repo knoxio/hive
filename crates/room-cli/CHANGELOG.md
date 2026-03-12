@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-03-12
+
 ### Added
 
 - `/taskboard` plugin — lease-based task lifecycle with `post`, `list`, `show`,

@@ -1,6 +1,6 @@
 [package]
 name = "room-cli"
-version = "3.0.0"
+version = "3.0.1"
 edition = "2021"
 description = "Multi-user chat room for agent/human coordination over Unix domain sockets"
 license = "MIT"
