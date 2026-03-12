@@ -182,9 +182,10 @@ of these as the first text frame:
 | First frame | Behaviour |
 |---|---|
 | `<username>` | Interactive session (history replay, broadcast, join/leave events) |
+| `SESSION:<token>` | Authenticated interactive session — validates token, enters interactive mode |
 | `JOIN:<username>` | Register username, receive `{"type":"token","token":"<uuid>"}`, close |
 | `TOKEN:<uuid>` | Authenticated one-shot — send message as next frame, receive echo, close |
-| `SEND:<username>` | Legacy unauthenticated one-shot send |
+| `SEND:<username>` | **Deprecated (3.1.0)** — unauthenticated one-shot send, use `TOKEN:` instead |
 
 After the interactive handshake, send plain text or JSON envelopes as text frames.
 Messages are broadcast to all connected clients (UDS and WS).
@@ -479,6 +480,7 @@ crates/room-cli/src/
                           ParamSchema, ParamType, builtin_command_infos, all_known_commands
     help.rs            — Built-in /help plugin
     stats.rs           — Built-in /stats plugin
+    status.rs          — Built-in /set_status plugin (PluginResult::SetStatus variant)
     queue.rs           — Built-in /queue plugin (push, pop, peek, list, clear) with NDJSON persistence
     taskboard/
       mod.rs           — Built-in /taskboard plugin (post, list, claim, plan, approve, update, finish,
@@ -542,11 +544,17 @@ docs/
   permission-prompts.md        — Claude Code permission prompt workarounds
   design-253-room-visibility.md — Design doc for room visibility and ACLs
   design-agent-spawn.md        — Design doc for /agent and /spawn commands (#434)
-  hive/                        — PRDs for Hive orchestration layer
-    README.md                  — Hive overview
-    prd-workspace.md           — Workspace management PRD
-    prd-team-provisioning.md   — Team provisioning PRD
-    prd-agent-discovery.md     — Agent discovery PRD
+  design-shared-knowledge.md   — Design doc for shared knowledge system (#480)
+  prd/
+    hive/                      — PRDs for Hive orchestration layer
+      README.md                — Hive overview (standalone web/native app architecture)
+      prd-workspace.md         — Workspace management PRD
+      prd-team-provisioning.md — Team provisioning PRD
+      prd-agent-discovery.md   — Agent discovery PRD
+    agent/                     — PRDs for agent autonomy features
+      prd-personality.md       — Personality system PRD
+      prd-agent-plugin.md      — /agent plugin PRD
+      prd-agent-health.md      — Agent health monitoring PRD
 
 scripts/
   pre-push.sh          — Git hook: check + fmt + clippy + test
@@ -578,9 +586,10 @@ Key invariants to preserve:
 - **UserRegistry owns persistent identity** — `users.json` is the source of truth for
   user→token mappings in daemon mode. `load_or_migrate_registry()` handles migration
   from legacy token formats. Do not bypass the registry for token issuance in daemon mode.
-- **Room create/destroy use UDS protocol prefixes** — `CREATE:<room_id>` and
+- **Room create/destroy require token auth** — `CREATE:<room_id>` and
   `DESTROY:<room_id>` are handled by `handle_create()` and `handle_destroy()` in daemon.rs.
-  `validate_room_id()` enforces naming constraints.
+  Both require a valid token (validated against UserRegistry). `validate_room_id()` enforces
+  naming constraints.
 - **Verify diffs before force-pushing** — always run `git diff origin/master..HEAD` before
   force-pushing a rebased branch. Rebase regressions (reverting merged code) were the #1
   process issue in sprint 8.
@@ -591,6 +600,18 @@ Key invariants to preserve:
   `too-many-lines-threshold = 600`, `too-many-arguments-threshold = 7`. Do not raise these
   without justification. `cargo clippy -- -D warnings` fails on violations.
 - **All tests must pass** before committing: `cargo test`.
+- **SESSION: handshake for authenticated interactive joins** — clients with a token file
+  auto-upgrade to `SESSION:<token>` instead of sending a bare username. All 3 transports
+  (UDS, WS, daemon) validate the token before entering interactive mode.
+- **SEND: handshake is deprecated** — `SEND:<username>` prints a deprecation warning on all
+  3 transports. Use `TOKEN:<uuid>` for authenticated one-shot sends instead.
+- **read_line_limited on all broker inputs** — `MAX_LINE_BYTES = 64KB`. All broker
+  `read_line` calls use `read_line_limited()` to prevent OOM from oversized messages.
+  Interactive sessions receive a `line_too_long` JSON error response.
+- **subscribe_mentioned before broadcast** — when a message @mentions a user, the broker
+  must persist the subscription to disk *before* broadcasting the message. The split
+  functions `subscribe_mentioned()` → `broadcast_and_persist()` → `broadcast_subscribe_notices()`
+  enforce this ordering at both interactive and oneshot call sites.
 
 ## Pre-push checklist
 
@@ -628,12 +649,12 @@ All tests must remain green. Add tests for any new behaviour.
 
 ## Baseline test count
 
-**Current baseline: 1182 Rust tests + 107 shell tests**
+**Current baseline: 1206 Rust tests + 107 shell tests**
 
 Rust breakdown:
 - room-protocol: 79 unit tests
-- room-cli: 763 unit + 158 integration (26 auth + 25 broker + 25 daemon + 17 oneshot + 11 rest_query + 24 room_lifecycle + 8 scripted + 15 ws + 7 ws_smoke) = 928 tests
-- room-ralph: 164 unit + 11 integration = 175 tests
+- room-cli: 792 unit + 161 integration (26 auth + 28 broker + 25 daemon + 19 oneshot + 11 rest_query + 29 room_lifecycle + 8 scripted + 15 ws + 7 ws_smoke ignored) = 953 tests
+- room-ralph: 164 unit + 10 integration = 174 tests
 
 Note: integration tests are split into focused modules under `tests/` (auth, broker, daemon,
 oneshot, rest_query, room_lifecycle, scripted, ws, ws_smoke). No single `integration.rs` file.
