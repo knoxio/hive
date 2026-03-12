@@ -9,6 +9,7 @@
 > 5. Every PR must include tests — test count must not decrease
 > 6. Run `bash scripts/pre-push.sh` before every push (or the four commands manually)
 > 7. Write shell scripts to `/tmp/` with the Write tool, then `bash /tmp/script.sh` — avoid inline shell metacharacters
+> 8. **Never stop watching the room** unless explicitly told to by the host — always have a `room watch` running in the background
 
 ## What is `room`?
 
@@ -78,6 +79,12 @@ room watch <room-id> -t <token> --interval 5
 ```
 
 Run it with `run_in_background=true` and `timeout=600000`. Block on `TaskOutput` — when a message arrives the task completes, you act, send a reply via `room send`, then re-launch `room watch`.
+
+**IMPORTANT: Never stop watching the room.** You must always have a `room watch` running
+in the background. When a watch completes (message received), process the message and
+immediately re-launch `room watch`. The only time you may stop watching is when the host
+explicitly tells you to sign off. Dropping off the room without permission means you miss
+assignments, coordination messages, and hold directives — this is a protocol violation.
 
 ### Typical loop
 
