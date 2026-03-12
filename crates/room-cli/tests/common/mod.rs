@@ -148,6 +148,33 @@ impl TestClient {
         }
     }
 
+    /// Connect using the `SESSION:<token>` handshake for authenticated
+    /// interactive sessions.
+    pub async fn connect_with_session(socket_path: &PathBuf, token: &str) -> Self {
+        let stream = UnixStream::connect(socket_path)
+            .await
+            .expect("client could not connect to broker socket");
+        let (r, mut w) = stream.into_split();
+        w.write_all(format!("SESSION:{token}\n").as_bytes())
+            .await
+            .unwrap();
+        Self {
+            reader: BufReader::new(r),
+            writer: w,
+        }
+    }
+
+    /// Read the next raw JSON line from the broker. Returns the raw Value.
+    /// Fails the test after 1 s.
+    pub async fn recv_json(&mut self) -> serde_json::Value {
+        let mut line = String::new();
+        timeout(Duration::from_secs(1), self.reader.read_line(&mut line))
+            .await
+            .expect("timed out waiting for message")
+            .expect("read error");
+        serde_json::from_str(line.trim()).expect("broker sent invalid JSON")
+    }
+
     /// Read the next JSON line from the broker. Fails the test after 1 s.
     pub async fn recv(&mut self) -> Message {
         let mut line = String::new();
@@ -304,6 +331,24 @@ pub async fn daemon_connect(
     let stream = UnixStream::connect(socket_path).await.unwrap();
     let (r, mut w) = stream.into_split();
     w.write_all(format!("ROOM:{room_id}:{username}\n").as_bytes())
+        .await
+        .unwrap();
+    (BufReader::new(r), w)
+}
+
+/// Connect to the daemon socket using SESSION:<token> handshake for
+/// authenticated interactive joins.
+pub async fn daemon_connect_session(
+    socket_path: &PathBuf,
+    room_id: &str,
+    token: &str,
+) -> (
+    BufReader<tokio::net::unix::OwnedReadHalf>,
+    tokio::net::unix::OwnedWriteHalf,
+) {
+    let stream = UnixStream::connect(socket_path).await.unwrap();
+    let (r, mut w) = stream.into_split();
+    w.write_all(format!("ROOM:{room_id}:SESSION:{token}\n").as_bytes())
         .await
         .unwrap();
     (BufReader::new(r), w)

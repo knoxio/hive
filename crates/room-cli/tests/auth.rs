@@ -866,6 +866,177 @@ async fn ws_join_persists_subscription() {
     );
 }
 
+// ── SESSION:<token> handshake tests ──────────────────────────────────────────
+
+/// SESSION: with a valid token enters an interactive session on a single-room
+/// UDS broker. The user receives history replay and their own join event.
+#[tokio::test]
+async fn session_handshake_valid_token_uds() {
+    let broker = TestBroker::start("t_sess_uds").await;
+
+    // Get a token via JOIN:
+    let (_, token) = room_cli::oneshot::join_session(&broker.socket_path, "agent")
+        .await
+        .expect("join failed");
+
+    // Connect with SESSION:<token>
+    let mut client = TestClient::connect_with_session(&broker.socket_path, &token).await;
+
+    // Should receive our own join event (username resolved from token)
+    let join = client
+        .recv_until(|m| matches!(m, Message::Join { user, .. } if user == "agent"))
+        .await;
+    assert!(
+        matches!(&join, Message::Join { user, .. } if user == "agent"),
+        "SESSION: should resolve token to 'agent', got: {join:?}"
+    );
+
+    // Can send messages in the interactive session
+    client.send_text("hello from session").await;
+    let msg = client
+        .recv_until(
+            |m| matches!(m, Message::Message { content, .. } if content == "hello from session"),
+        )
+        .await;
+    assert!(
+        matches!(&msg, Message::Message { user, .. } if user == "agent"),
+        "message user should be 'agent', got: {msg:?}"
+    );
+}
+
+/// SESSION: with an invalid token returns an error and closes the connection.
+#[tokio::test]
+async fn session_handshake_invalid_token_uds() {
+    let broker = TestBroker::start("t_sess_invalid_uds").await;
+
+    let mut client =
+        TestClient::connect_with_session(&broker.socket_path, "not-a-real-token").await;
+
+    let resp = client.recv_json().await;
+    assert_eq!(
+        resp["type"], "error",
+        "expected error response, got: {resp}"
+    );
+    assert_eq!(
+        resp["code"], "invalid_token",
+        "expected invalid_token code, got: {resp}"
+    );
+}
+
+/// SESSION: with an empty token returns an error.
+#[tokio::test]
+async fn session_handshake_empty_token_uds() {
+    let broker = TestBroker::start("t_sess_empty_uds").await;
+
+    let mut client = TestClient::connect_with_session(&broker.socket_path, "").await;
+
+    let resp = client.recv_json().await;
+    assert_eq!(
+        resp["type"], "error",
+        "expected error response, got: {resp}"
+    );
+    assert_eq!(resp["code"], "invalid_token");
+}
+
+/// SESSION: with a valid token over WebSocket enters an interactive session.
+#[tokio::test]
+async fn session_handshake_valid_token_ws() {
+    let (broker, port) = TestBroker::start_with_ws("t_sess_ws").await;
+
+    // Get a token
+    let (_, token) = room_cli::oneshot::join_session(&broker.socket_path, "wsagent")
+        .await
+        .expect("join failed");
+
+    // Connect via WS with SESSION:<token>
+    let (_tx, mut rx) = common::ws_connect(port, "t_sess_ws", &format!("SESSION:{token}")).await;
+
+    // Should get our join event
+    let join = common::ws_recv_until(
+        &mut rx,
+        |m| matches!(m, Message::Join { user, .. } if user == "wsagent"),
+    )
+    .await;
+    assert!(
+        matches!(&join, Message::Join { user, .. } if user == "wsagent"),
+        "WS SESSION: should resolve to 'wsagent', got: {join:?}"
+    );
+}
+
+/// SESSION: with an invalid token over WebSocket returns an error.
+#[tokio::test]
+async fn session_handshake_invalid_token_ws() {
+    let (_broker, port) = TestBroker::start_with_ws("t_sess_inv_ws").await;
+
+    let (_tx, mut rx) = common::ws_connect(port, "t_sess_inv_ws", "SESSION:bogus-token").await;
+
+    let resp = common::ws_recv_json(&mut rx).await;
+    assert_eq!(resp["type"], "error", "expected error, got: {resp}");
+    assert_eq!(resp["code"], "invalid_token");
+}
+
+/// SESSION: with a valid token on the daemon UDS path enters an interactive
+/// session (username resolved from UserRegistry).
+#[tokio::test]
+async fn session_handshake_valid_token_daemon() {
+    let td = common::TestDaemon::start(&["sess-room"]).await;
+
+    // Get a global token
+    let token = common::daemon_global_join(&td.socket_path, "dagent").await;
+
+    // Connect with ROOM:sess-room:SESSION:<token>
+    let (mut reader, mut writer) =
+        common::daemon_connect_session(&td.socket_path, "sess-room", &token).await;
+
+    // Should get the join event with resolved username
+    let mut line = String::new();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            line.clear();
+            reader.read_line(&mut line).await.unwrap();
+            let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+            if v["type"] == "join" && v["user"] == "dagent" {
+                return v;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for join event with resolved username");
+
+    // Can send messages
+    writer
+        .write_all(b"hello from daemon session\n")
+        .await
+        .unwrap();
+    line.clear();
+    tokio::time::timeout(Duration::from_secs(1), reader.read_line(&mut line))
+        .await
+        .expect("timed out")
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+    assert_eq!(v["type"], "message");
+    assert_eq!(v["user"], "dagent");
+    assert_eq!(v["content"], "hello from daemon session");
+}
+
+/// SESSION: with an invalid token on the daemon path returns an error.
+#[tokio::test]
+async fn session_handshake_invalid_token_daemon() {
+    let td = common::TestDaemon::start(&["sess-inv"]).await;
+
+    let (mut reader, _writer) =
+        common::daemon_connect_session(&td.socket_path, "sess-inv", "fake-token-123").await;
+
+    let mut line = String::new();
+    tokio::time::timeout(Duration::from_secs(1), reader.read_line(&mut line))
+        .await
+        .expect("timed out")
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+    assert_eq!(v["type"], "error", "expected error, got: {v}");
+    assert_eq!(v["code"], "invalid_token");
+}
+
 /// The room host (first interactive user) can execute admin commands.
 #[tokio::test]
 async fn host_can_run_admin_commands() {
