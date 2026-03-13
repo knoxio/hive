@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-13
+
 ### Added
 
 - `EventType` enum (`#[non_exhaustive]`) — typed event categories for structured

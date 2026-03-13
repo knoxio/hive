@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-13
+
 ### Added
 
 - Event filtering on subscriptions: `room subscribe <room> -t TOKEN full --events task_posted,task_finished`

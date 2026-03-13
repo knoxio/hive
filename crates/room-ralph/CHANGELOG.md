@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-13
+
 ### Added
 
 - `--allow-all` flag to skip all tool restrictions for trusted environments. (#433, #440)
