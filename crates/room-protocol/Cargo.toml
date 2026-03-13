@@ -1,6 +1,6 @@
 [package]
 name = "room-protocol"
-version = "3.1.0"
+version = "3.2.0"
 edition = "2021"
 description = "Wire format types for the room multi-user chat system"
 license = "MIT"

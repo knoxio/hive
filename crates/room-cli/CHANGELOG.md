@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-03-13
+
 ### Added
 
 - Team-restricted task claims: `/taskboard post --team <name>` creates team-restricted tasks.
