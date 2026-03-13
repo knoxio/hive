@@ -19,6 +19,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **daemon:** Create runtime socket directory on Linux before binding. On systems with
+  `$XDG_RUNTIME_DIR` (e.g. `/run/user/<uid>/room/`), the `room/` subdirectory was not
+  created, causing daemon startup to fail with a 5-second timeout.
+- **cli:** Auto-register user token on first interactive join (`room <room> <user>`).
+  Previously, fresh installs failed with "CREATE requires a valid token" because no token
+  file existed yet.
 - **tui:** Status/system message text no longer appears as fake users in the member panel.
   Commas in status text caused the `/who` parser to split status fragments into separate
   usernames. Fixed by sanitizing commas in broker output and adding parser-side validation. (#656)

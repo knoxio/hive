@@ -435,6 +435,7 @@ async fn run_join(
 
     // Read the user's token so we can authenticate the CREATE request.
     // The token file is written by `room join <username>` or by Client::ensure_token.
+    // If no token exists yet, auto-join to register the user first.
     let token_val = {
         let path = paths::global_token_path(&username);
         std::fs::read_to_string(&path)
@@ -442,13 +443,22 @@ async fn run_join(
             .and_then(|data| serde_json::from_str::<serde_json::Value>(data.trim()).ok())
             .and_then(|v| v["token"].as_str().map(|s| s.to_owned()))
     };
-    let config_json = match token_val {
-        Some(tok) => room_cli::oneshot::transport::inject_token_into_config(
-            r#"{"visibility":"public"}"#,
-            &tok,
-        ),
-        None => r#"{"visibility":"public"}"#.to_owned(),
+    let token_val = match token_val {
+        Some(t) => t,
+        None => {
+            let (_, token) =
+                room_cli::oneshot::transport::global_join_session(&daemon_socket, &username)
+                    .await?;
+            let token_data = serde_json::json!({"username": &username, "token": &token});
+            let token_path = paths::global_token_path(&username);
+            std::fs::write(&token_path, format!("{token_data}\n"))?;
+            token
+        }
     };
+    let config_json = room_cli::oneshot::transport::inject_token_into_config(
+        r#"{"visibility":"public"}"#,
+        &token_val,
+    );
 
     // Create the room on the daemon (ignore "already exists").
     match room_cli::oneshot::transport::create_room(&daemon_socket, &room_id, &config_json).await {

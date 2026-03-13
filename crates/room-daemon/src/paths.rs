@@ -163,6 +163,13 @@ pub fn broker_event_filters_path(state_dir: &Path, room_id: &str) -> PathBuf {
 pub fn ensure_room_dirs() -> std::io::Result<()> {
     create_dir_0700(&room_state_dir())?;
     create_dir_0700(&room_data_dir())?;
+    // Ensure the runtime directory for the daemon socket exists.
+    // On Linux with $XDG_RUNTIME_DIR, this creates the `room/` subdirectory
+    // (e.g. /run/user/1002/room/) which is not created by the OS.
+    let rt = runtime_dir();
+    if rt != std::path::Path::new("/tmp") {
+        create_dir_0700(&rt)?;
+    }
     Ok(())
 }
 
