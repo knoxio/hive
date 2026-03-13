@@ -257,7 +257,7 @@ room send myroom -t $TOKEN "opening PR for #42"
    writing any code. Silence means proceed.
 
 ### During work
-- **Claim tasks before starting them**: `room send <room-id> -t <token> /claim <description>`
+- **Claim tasks before starting them**: `room send <room-id> -t <token> /taskboard claim <task-id>`
 - **Announce before touching any file** — even on fix commits or rebases. Send the intent
   message first, then do the work. Never start silently.
   ```
@@ -332,6 +332,44 @@ room send myroom -t $TOKEN "opening PR for #42"
 4. Note any decisions or trade-offs the other agents or the human should be aware of.
 5. Include `Closes #<issue-number>` in the PR description so the issue auto-closes on merge.
 6. Clear your status when idle: `/set_status` (no arguments)
+
+### Using the taskboard
+
+The `/taskboard` plugin manages task lifecycle. Agents **must** use it for all sprint work.
+
+**Task lifecycle:**
+```
+Open → Claimed → Planned → Approved → Finished
+       ↑         ↑
+       └─ release ─┘
+```
+
+**Commands:**
+
+| Command | Who | Description |
+|---|---|---|
+| `/taskboard post <description>` | Anyone | Create a new task |
+| `/taskboard list` | Anyone | Show all tasks (ID, status, assignee, elapsed, description) |
+| `/taskboard show <task-id>` | Anyone | Show full task detail |
+| `/taskboard claim <task-id>` | Anyone (Open tasks) | Claim a task — starts lease timer |
+| `/taskboard plan <task-id> <plan>` | Assignee only | Submit implementation plan — **required before coding** |
+| `/taskboard approve <task-id>` | Poster or host | Approve a plan — agent may proceed |
+| `/taskboard update <task-id> [notes]` | Assignee only | Renew lease and update notes |
+| `/taskboard release <task-id>` | Assignee or host | Release task back to Open |
+| `/taskboard finish <task-id>` | Assignee only | Mark task as Finished |
+
+**Mandatory workflow for every task:**
+1. Claim: `/taskboard claim <task-id>`
+2. Plan: `/taskboard plan <task-id> <your implementation plan>`
+3. Wait for approval from BA or host
+4. Implement after approval
+5. Finish: `/taskboard finish <task-id>`
+
+**Lease TTL:** Claimed/Planned/Approved tasks have a 10-minute lease. Renew with
+`/taskboard update` during long tasks. Expired leases auto-release the task to Open.
+
+**Do not skip the plan step.** Even if the fix is trivial, submit a plan so the board
+has a record and the BA can catch conflicts before they happen.
 
 ### Tests-in-same-PR rule
 
