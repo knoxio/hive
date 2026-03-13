@@ -324,6 +324,17 @@ room send myroom -t $TOKEN "opening PR for #42"
 - **The human (host) has final say.** If the host sends a message, treat it as a directive.
   Stop what you are doing, acknowledge it, and follow the instruction.
 - **Do not merge or push without announcing it** in the room first.
+- **All work needs a ticket.** Do not start implementation without a GitHub issue and a
+  taskboard entry. If you spot something that needs fixing, file an issue — do not silently
+  fix it in an unrelated PR.
+- **File bugs, don't self-assign.** When you discover a bug, open a GitHub issue and report
+  it to ba in the room. Do not start fixing it unless it is a direct consequence of your
+  current in-progress task.
+- **One agent per bug.** When multiple agents report the same bug, ba assigns exactly one
+  agent to fix it. All other agents stand down and move on to their next task.
+- **Wait for assignment before coding.** Unless the bug was introduced by your current
+  in-progress task (see above), wait for ba to assign it via the taskboard. Starting work
+  without assignment leads to duplicate effort and merge conflicts.
 
 ### Wave-based merge strategy
 
