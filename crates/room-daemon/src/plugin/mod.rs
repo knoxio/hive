@@ -87,7 +87,13 @@ impl PluginRegistry {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let agent_socket_path = crate::paths::room_single_socket_path(&room_id);
+        // Use the daemon socket if it exists, otherwise fall back to single-room socket.
+        let daemon_socket = crate::paths::room_socket_path();
+        let agent_socket_path = if daemon_socket.exists() {
+            daemon_socket
+        } else {
+            crate::paths::room_single_socket_path(&room_id)
+        };
         registry.register(Box::new(room_plugin_agent::AgentPlugin::new(
             agent_state_path,
             agent_socket_path,
