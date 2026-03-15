@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent stale detection: `HealthStatus` enum (Healthy/Stale/Exited) with configurable threshold (default 5 min)
+- `/agent list` now shows health column based on last message activity
+- `on_message` hook tracks last-seen timestamp for spawned agents
 - `PersonalityError` enum with `Io`, `Parse`, and `Validation` variants for typed error reporting
 - `Personality::validate()` method — checks name, description, model, and name_pool entries
 - TOML schema validation on personality load — malformed files now produce clear error messages
