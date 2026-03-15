@@ -1,13 +1,13 @@
 [package]
 name = "room-plugin-agent"
-version = "3.3.0"
+version = "3.4.0"
 edition = "2021"
 description = "Agent spawn/stop/list plugin for the room multi-user chat system"
 license = "MIT"
 repository = "https://github.com/knoxio/room"
 
 [dependencies]
-room-protocol = { path = "../room-protocol", version = "3.3.0" }
+room-protocol = { path = "../room-protocol", version = "3.4.0" }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

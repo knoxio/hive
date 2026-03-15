@@ -1949,7 +1949,7 @@ dependencies = [
 
 [[package]]
 name = "room-cli"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1976,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "room-daemon"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1996,7 +1996,7 @@ dependencies = [
 
 [[package]]
 name = "room-plugin-agent"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2012,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "room-plugin-taskboard"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2024,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "room-protocol"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2035,7 +2035,7 @@ dependencies = [
 
 [[package]]
 name = "room-ralph"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = [
  "chrono",
  "clap",
