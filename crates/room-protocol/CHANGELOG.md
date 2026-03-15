@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-03-15
+
 ### Added
 
 - `plugin::abi` module with C ABI types for dynamic plugin loading:

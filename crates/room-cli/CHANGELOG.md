@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-03-15
+
 ### Added
 
 - `room upgrade` command — checks crates.io for newer room-cli/room-ralph versions, verifies plugin compatibility, displays upgrade plan. Pass `--execute` to run `cargo install` (#747)

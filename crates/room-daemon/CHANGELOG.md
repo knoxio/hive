@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-03-15
+
 ### Added
 
 - `PluginRegistry::notify_message()` — broadcasts message observations to all plugins
