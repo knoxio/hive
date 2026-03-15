@@ -79,6 +79,21 @@ impl PluginRegistry {
             None,
         )))?;
 
+        // Derive agent plugin paths from the chat path.
+        let agent_state_path = chat_path.with_extension("agents");
+        let agent_log_dir = chat_path.parent().unwrap_or(chat_path).join("agent-logs");
+        let room_id = chat_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let agent_socket_path = crate::paths::room_single_socket_path(&room_id);
+        registry.register(Box::new(room_plugin_agent::AgentPlugin::new(
+            agent_state_path,
+            agent_socket_path,
+            agent_log_dir,
+        )))?;
+
         Ok(registry)
     }
 
