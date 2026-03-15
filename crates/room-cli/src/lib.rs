@@ -7,3 +7,4 @@ pub mod message;
 pub mod oneshot;
 pub mod plugin_cmd;
 pub mod tui;
+pub mod upgrade;
