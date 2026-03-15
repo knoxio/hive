@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- C ABI entry points for dynamic loading via `declare_plugin!` macro
+- `cdylib-exports` feature flag for `#[no_mangle]` symbol export
+- `crate-type = ["cdylib", "rlib"]` for shared library builds
+- JSON config parsing for dynamic plugin instantiation
 - Agent stale detection: `HealthStatus` enum (Healthy/Stale/Exited) with configurable threshold (default 5 min)
 - `/agent list` now shows health column based on last message activity
 - `on_message` hook tracks last-seen timestamp for spawned agents
