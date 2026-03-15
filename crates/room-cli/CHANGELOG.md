@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-03-15
+
 ## [3.2.0] - 2026-03-13
 
 ### Added
