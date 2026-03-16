@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  backend:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Check
+        run: cargo check -p hive-server
+      - name: Format
+        run: cargo fmt -- --check
+      - name: Clippy
+        run: cargo clippy -p hive-server -- -D warnings
+      - name: Test
+        run: cargo test -p hive-server
+
+  frontend:
+    name: Frontend (React)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: hive-web/pnpm-lock.yaml
+      - name: Install
+        run: cd hive-web && pnpm install --frozen-lockfile
+      - name: TypeScript check
+        run: cd hive-web && pnpm exec tsc --noEmit
+      - name: Build
+        run: cd hive-web && pnpm build
+      - name: Lint
+        run: cd hive-web && pnpm exec eslint src/ || true

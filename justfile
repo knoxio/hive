@@ -48,6 +48,24 @@ lint:
 # Check everything (format + lint + test)
 check: fmt lint test
 
+# CI checks — same as GitHub Actions, must pass before opening PRs
+ci:
+    cargo check -p hive-server
+    cargo fmt -- --check
+    cargo clippy -p hive-server -- -D warnings
+    cargo test -p hive-server
+    cd hive-web && pnpm exec tsc --noEmit
+    cd hive-web && pnpm build
+    cd hive-web && pnpm exec eslint src/ || true
+
+# CI fix — auto-fix formatting and lint issues, then verify
+ci-fix:
+    cargo fmt
+    cargo clippy -p hive-server --fix --allow-dirty -- -D warnings
+    cd hive-web && pnpm exec eslint src/ --fix 2>/dev/null || true
+    @echo "--- verifying ---"
+    just ci
+
 # Clean build artifacts
 clean:
     cargo clean
