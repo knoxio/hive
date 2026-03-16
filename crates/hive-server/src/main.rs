@@ -2,12 +2,13 @@ mod config;
 pub mod daemon;
 pub mod db;
 pub mod error;
+mod rest_proxy;
 mod ws_relay;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::{routing::get, Json, Router};
+use axum::{routing::{get, post}, Json, Router};
 use config::HiveConfig;
 
 /// Shared application state.
@@ -78,6 +79,10 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/health", get(health))
+        .route("/api/rooms", get(rest_proxy::list_rooms))
+        .route("/api/rooms/{room_id}", get(rest_proxy::get_room))
+        .route("/api/rooms/{room_id}/messages", get(rest_proxy::get_messages))
+        .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .with_state(state);
 
