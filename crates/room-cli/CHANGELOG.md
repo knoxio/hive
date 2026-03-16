@@ -12,6 +12,7 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ### Added
 
+- 5 integration tests for persistence and cross-transport visibility (Section 4+5 of #675 manual test plan)
 - 6 integration tests for auth/error edge cases from manual test plan (#675):
   bare username compat, path traversal rejection, JSON injection preservation,
   long username handling, broker kill recovery, chat file deletion mid-session
