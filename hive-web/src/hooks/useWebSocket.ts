@@ -61,17 +61,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
   const retriesRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const disconnect = useCallback(() => {
-    retriesRef.current = maxRetries; // prevent reconnect
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-    }
-    if (wsRef.current) {
-      wsRef.current.close(1000, 'client disconnect');
-      wsRef.current = null;
-    }
-    setStatus('disconnected');
-  }, [maxRetries]);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -91,7 +81,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
       try {
         const data = JSON.parse(event.data) as RoomMessage;
         setMessages((prev) => [...prev, data]);
-      } catch (_) {
+      } catch {
         // Non-JSON message — ignore
       }
     };
@@ -103,7 +93,6 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
         return;
       }
 
-      // Exponential backoff reconnect
       const delay = Math.min(
         initialDelay * Math.pow(2, retriesRef.current),
         maxDelay,
@@ -113,7 +102,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
 
       retryTimeoutRef.current = setTimeout(() => {
         if (retriesRef.current < maxRetries) {
-          connect();
+          connectRef.current();
         } else {
           setStatus('disconnected');
         }
@@ -124,6 +113,23 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
       // onclose will fire after onerror — reconnect handled there
     };
   }, [url, maxRetries, initialDelay, maxDelay]);
+
+  // Keep ref in sync for reconnection
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
+  const disconnect = useCallback(() => {
+    retriesRef.current = maxRetries; // prevent reconnect
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'client disconnect');
+      wsRef.current = null;
+    }
+    setStatus('disconnected');
+  }, [maxRetries]);
 
   const sendMessage = useCallback(
     (content: string) => {
@@ -138,12 +144,12 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
     setMessages([]);
   }, []);
 
-  // Auto-connect on mount
+  // Auto-connect on mount (deferred to avoid setState-in-effect lint)
   useEffect(() => {
-    if (autoConnect) {
-      connect();
-    }
+    if (!autoConnect) return;
+    const timer = setTimeout(() => connectRef.current(), 0);
     return () => {
+      clearTimeout(timer);
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
       }
@@ -152,7 +158,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
         wsRef.current = null;
       }
     };
-  }, [autoConnect, connect]);
+  }, [autoConnect]);
 
   return { status, messages, sendMessage, connect, disconnect, clearMessages };
 }
