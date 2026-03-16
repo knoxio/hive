@@ -1,9 +1,7 @@
-version: "3.9"
-
 services:
   # Room daemon — real-time messaging infrastructure
   room-daemon:
-    image: rust:1.84-slim
+    image: rust:1.87-slim
     command: >
       sh -c "
         cargo install room-cli --version 3.5.1 &&
@@ -25,7 +23,7 @@ services:
       RUST_LOG: hive=info
     volumes:
       - hive-data:/app/data
-      - ./hive.toml:/app/hive.toml:ro
+      - ./hive.toml.example:/app/hive.toml:ro
     ports:
       - "3000:3000"
     depends_on:
