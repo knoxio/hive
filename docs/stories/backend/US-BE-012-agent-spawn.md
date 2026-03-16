@@ -21,5 +21,16 @@
 - Stdout/stderr of the child process is redirected to `config.data_dir/agents/<agent_id>/agent.log`
 - A background task monitors the child's exit status and updates the SQLite status to `stopped` on exit
 
+## Clarifications (Sprint 19 Review)
+
+- **Spawn failure handling**: Return `500 Internal Server Error` with a JSON body `{"error": "<detail>"}` in the following cases:
+  - `room-ralph` binary not found at `config.ralph_binary_path` or on `PATH`
+  - Agent working directory creation fails (e.g., permission denied, disk full)
+  - Spawned process does not become alive (PID check) within 10 seconds of `Command::spawn()`
+  In all cases, clean up any partially-created resources (directory, SQLite record) before returning.
+- **Duplicate check**: Reject with `409 Conflict` if an agent with the same **username** (not personality) is already running in the same room. Multiple agents with the same personality but different usernames are allowed in the same room (e.g., two `coder` agents). The existing AC for personality-based conflict detection (same personality in same room) is superseded by this username-based check.
+- **Process monitoring**: A background task checks each agent's PID every 30 seconds using a kill-zero probe (`kill(pid, 0)`). If the process is dead, update the SQLite status to `"exited"` and record the exit code if available from the stored `Child` handle. Emit an info-level log entry with the agent ID, room ID, and exit code.
+- **Personality validation**: The `personality` parameter must match the name of an installed personality file. Validate against the set of available personalities at spawn time. Return `400 Bad Request` with `{"error": "unknown personality: <name>"}` if no matching personality is found.
+
 ## Phase
 Phase 2 (Auth + Agent Management)
