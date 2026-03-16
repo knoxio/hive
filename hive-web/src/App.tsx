@@ -52,12 +52,20 @@ function App() {
     autoConnect: !!selectedRoomId,
   });
 
-  // Fetch rooms from backend API — no hardcoded fallback
-  const fetchRooms = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/rooms`);
-      if (res.ok) {
-        const data = await res.json();
+  // Fetch rooms from backend API on mount
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/rooms`)
+      .then((res) => {
+        if (!res.ok) {
+          console.warn(`Failed to fetch rooms: ${res.status}`);
+          if (!cancelled) setRooms([]);
+          return;
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
         const roomList = (data.rooms || data || []) as Array<{
           id: string;
           name?: string;
@@ -69,19 +77,15 @@ function App() {
             unreadCount: 0,
           }))
         );
-      } else {
-        console.warn(`Failed to fetch rooms: ${res.status}`);
-        setRooms([]);
-      }
-    } catch (err) {
-      console.warn("Cannot connect to hive-server:", err);
-      setRooms([]);
-    }
+      })
+      .catch((err) => {
+        console.warn("Cannot connect to hive-server:", err);
+        if (!cancelled) setRooms([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  useEffect(() => {
-    fetchRooms();
-  }, [fetchRooms]);
 
   // Extract members from messages
   const members: Member[] = (() => {
