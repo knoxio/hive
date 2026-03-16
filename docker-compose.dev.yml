@@ -25,6 +25,7 @@ services:
   # Hive frontend — dev mode with Vite HMR
   # Builds from Dockerfile base stage (has node+npm+pnpm pre-installed)
   hive-web:
+    image: hive-web:dev
     build:
       context: ./hive-web
       dockerfile: Dockerfile

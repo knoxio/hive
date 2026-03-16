@@ -16,6 +16,7 @@ services:
 
   # Hive backend — axum server proxying to room daemon
   hive-server:
+    image: hive-server:latest
     build:
       context: .
       dockerfile: crates/hive-server/Dockerfile
@@ -33,6 +34,7 @@ services:
 
   # Hive frontend — React web dashboard
   hive-web:
+    image: hive-web:latest
     build:
       context: hive-web
       dockerfile: Dockerfile
