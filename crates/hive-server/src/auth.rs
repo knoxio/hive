@@ -94,7 +94,9 @@ pub async fn auth_middleware(
                 Err(e) => HiveError::Unauthorized(e).into_response(),
             }
         }
-        Some(_) => HiveError::Unauthorized("invalid authorization header format".into()).into_response(),
+        Some(_) => {
+            HiveError::Unauthorized("invalid authorization header format".into()).into_response()
+        }
         None => {
             // For MVP: allow unauthenticated access (auth is optional)
             next.run(request).await
