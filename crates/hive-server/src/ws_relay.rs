@@ -11,7 +11,7 @@
 //! - All message types forwarded (Text, Binary, Ping, Pong)
 //! - Keepalive pings sent to daemon on configurable interval
 //! - Automatic reconnection with exponential backoff on upstream failure
-//! - 5-second connection timeout on upstream connects
+//! - 2-second connection timeout on upstream connects (local network)
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,7 +33,11 @@ use crate::AppState;
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 
 /// Connection timeout for upstream daemon WebSocket connections.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+///
+/// Kept short (2s) since the relay connects to a co-located daemon on the
+/// same host or local network. A longer timeout causes Playwright e2e tests
+/// to hang when the daemon is unavailable (see #87).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Type alias for the daemon WebSocket stream.
 type DaemonStream =
@@ -409,8 +413,8 @@ mod tests {
     }
 
     #[test]
-    fn connect_timeout_is_five_seconds() {
-        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(5));
+    fn connect_timeout_is_two_seconds() {
+        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(2));
     }
 
     #[test]
