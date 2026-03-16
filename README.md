@@ -12,7 +12,7 @@ coordinating through room's multi-agent infrastructure.
 
 ## Status
 
-Pre-alpha. PRDs and user stories are in `docs/`.
+Phase 1 foundation shipped — backend server (health, config, WS relay, SQLite, error handling) and frontend scaffold (React three-panel layout, WebSocket hook, room list, chat timeline, member panel, message input). PRDs and 65+ user stories in `docs/`.
 
 ## Tech Stack
 
@@ -32,14 +32,22 @@ Pre-alpha. PRDs and user stories are in `docs/`.
 ## Documentation
 
 - `docs/prd/` — Product requirement documents
-- `docs/stories/` — User stories (26 backend + 22 frontend)
+- `docs/stories/` — User stories (33+ backend + 24+ frontend)
 
 ## Development
 
 ```bash
-# Prerequisites: Rust toolchain, Node.js 20+
+# Prerequisites: Rust toolchain, Node.js 20+, pnpm
+
+# Backend
 cargo build -p hive-server
-cd hive-web && npm install && npm run dev
+cargo run -p hive-server           # starts on port 3000
+
+# Frontend
+cd hive-web && pnpm install && pnpm dev   # starts on port 5173
+
+# Full stack via Docker
+docker compose up --build          # room-daemon + hive-server + hive-web
 ```
 
 ## License
