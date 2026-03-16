@@ -1,0 +1,42 @@
+# Development override — hot reload for frontend, cargo-watch for backend
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Hive backend — dev mode with cargo-watch for auto-rebuild
+  hive-server:
+    build:
+      context: .
+      dockerfile: crates/hive-server/Dockerfile
+      target: chef
+    command: >
+      sh -c "
+        cargo install cargo-watch &&
+        cargo watch -x 'run -p hive-server'
+      "
+    volumes:
+      - ./crates:/app/crates:ro
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ./Cargo.lock:/app/Cargo.lock:ro
+      - hive-data:/root/.hive
+    environment:
+      RUST_LOG: hive=debug
+      HIVE_DATA_DIR: /root/.hive/data
+
+  # Hive frontend — dev mode with Vite HMR
+  hive-web:
+    image: node:22-slim
+    working_dir: /app
+    command: >
+      sh -c "
+        corepack enable &&
+        corepack prepare pnpm@latest --activate &&
+        pnpm install &&
+        pnpm dev --host 0.0.0.0 --port 5173
+      "
+    volumes:
+      - ./hive-web:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3000
