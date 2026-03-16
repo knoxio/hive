@@ -1,5 +1,6 @@
 mod config;
 pub mod daemon;
+pub mod db;
 pub mod error;
 mod ws_relay;
 
@@ -12,6 +13,8 @@ use config::HiveConfig;
 /// Shared application state.
 struct AppState {
     config: HiveConfig,
+    #[allow(dead_code)]
+    db: db::Database,
     start_time: std::time::Instant,
 }
 
@@ -49,11 +52,20 @@ async fn main() {
         .unwrap_or_else(|| PathBuf::from("hive.toml"));
     let config = config::load_config(&config_path);
 
+    // Database
+    let db_path = PathBuf::from(&config.server.data_dir).join("hive.db");
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent).expect("failed to create data directory");
+    }
+    let db = db::Database::open(&db_path).expect("failed to open database");
+    tracing::info!("database opened at {}", db_path.display());
+
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("hive-server starting on {bind_addr}");
 
     let state = Arc::new(AppState {
         config,
+        db,
         start_time: std::time::Instant::now(),
     });
 
