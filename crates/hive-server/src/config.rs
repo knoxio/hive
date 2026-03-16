@@ -50,10 +50,14 @@ impl Default for HiveConfig {
 
 impl Default for ServerConfig {
     fn default() -> Self {
+        let data_dir = std::env::var("HIVE_DATA_DIR").unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_owned());
+            format!("{home}/.hive/data")
+        });
         Self {
             host: "127.0.0.1".to_owned(),
             port: 3000,
-            data_dir: "data".to_owned(),
+            data_dir,
         }
     }
 }
