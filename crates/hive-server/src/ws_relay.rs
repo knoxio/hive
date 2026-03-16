@@ -28,8 +28,8 @@ pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let daemon_ws_url = format!(
-        "ws://127.0.0.1:{}/ws/{}",
-        state.config.daemon.ws_port, room_id
+        "{}/ws/{}",
+        state.config.daemon.ws_url, room_id
     );
     ws.on_upgrade(move |socket| relay(socket, daemon_ws_url))
 }

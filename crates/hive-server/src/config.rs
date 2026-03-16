@@ -33,8 +33,8 @@ pub struct ServerConfig {
 pub struct DaemonConfig {
     /// Path to the room daemon Unix socket.
     pub socket_path: PathBuf,
-    /// WebSocket port of the room daemon (for WS relay).
-    pub ws_port: u16,
+    /// WebSocket URL of the room daemon (e.g. ws://127.0.0.1:4200).
+    pub ws_url: String,
 }
 
 impl Default for HiveConfig {
@@ -59,7 +59,7 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             socket_path: PathBuf::from("/tmp/roomd.sock"),
-            ws_port: 4200,
+            ws_url: "ws://127.0.0.1:4200".to_owned(),
         }
     }
 }

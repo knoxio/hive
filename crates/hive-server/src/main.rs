@@ -1,4 +1,6 @@
 mod config;
+pub mod daemon;
+pub mod error;
 mod ws_relay;
 
 use std::path::PathBuf;
