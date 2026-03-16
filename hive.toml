@@ -1,0 +1,11 @@
+# Hive server configuration
+# Used by docker-compose — adjust for local development
+
+[server]
+host = "0.0.0.0"
+port = 3000
+data_dir = "/app/data"
+
+[daemon]
+socket_path = "/tmp/roomd.sock"
+ws_url = "ws://room-daemon:4200"

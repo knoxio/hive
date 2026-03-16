@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  # Room daemon — real-time messaging infrastructure
+  room-daemon:
+    image: rust:1.84-slim
+    command: >
+      sh -c "
+        cargo install room-cli --version 3.5.1 &&
+        room daemon --ws-port 4200
+      "
+    volumes:
+      - room-data:/root/.room
+    expose:
+      - "4200"
+    networks:
+      - hive-net
+
+  # Hive backend — axum server proxying to room daemon
+  hive-server:
+    build:
+      context: .
+      dockerfile: crates/hive-server/Dockerfile
+    environment:
+      RUST_LOG: hive=info
+    volumes:
+      - hive-data:/app/data
+      - ./hive.toml:/app/hive.toml:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - room-daemon
+    networks:
+      - hive-net
+
+  # Hive frontend — React web dashboard
+  hive-web:
+    build:
+      context: hive-web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - hive-server
+    networks:
+      - hive-net
+
+volumes:
+  room-data:
+  hive-data:
+
+networks:
+  hive-net:
+    driver: bridge
