@@ -39,7 +39,6 @@ pub struct DaemonConfig {
     pub ws_url: String,
 }
 
-
 impl Default for ServerConfig {
     fn default() -> Self {
         let host = std::env::var("HIVE_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned());
