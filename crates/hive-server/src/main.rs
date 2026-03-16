@@ -55,7 +55,14 @@ async fn main() {
     // Database
     let db_path = PathBuf::from(&config.server.data_dir).join("hive.db");
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).expect("failed to create data directory");
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!(
+                "[hive] error: cannot create data directory {}: {e}\n\
+                 hint: set data_dir in hive.toml or HIVE_DATA_DIR env to a writable path",
+                parent.display()
+            );
+            std::process::exit(1);
+        }
     }
     let db = db::Database::open(&db_path).expect("failed to open database");
     tracing::info!("database opened at {}", db_path.display());
