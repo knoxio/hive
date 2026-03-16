@@ -4,6 +4,7 @@ import { RoomList } from "./components/RoomList";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
 import { MessageInput } from "./components/MessageInput";
+import { AgentGrid } from "./components/AgentGrid";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
@@ -201,6 +202,8 @@ function App() {
                 connected={status === "connected"}
               />
             </>
+          ) : activeTab === "agents" ? (
+            <AgentGrid />
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
               <div className="text-center">
