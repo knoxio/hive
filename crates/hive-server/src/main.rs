@@ -114,5 +114,35 @@ async fn main() {
         .expect("failed to bind");
 
     tracing::info!("hive-server listening on {bind_addr}");
-    axum::serve(listener, app).await.expect("server error");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("server error");
+
+    tracing::info!("hive-server shutting down gracefully");
+}
+
+/// Wait for SIGTERM or SIGINT (Ctrl+C) to initiate graceful shutdown.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("received SIGINT, initiating shutdown"),
+        _ = terminate => tracing::info!("received SIGTERM, initiating shutdown"),
+    }
 }
