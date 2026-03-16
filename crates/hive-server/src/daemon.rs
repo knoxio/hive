@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 
 /// Configuration for connecting to the room daemon.
