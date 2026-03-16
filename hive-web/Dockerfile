@@ -1,7 +1,7 @@
 # Multi-stage build for hive-web frontend
 # Uses pnpm for package management
 
-FROM node:22-slim AS base
+FROM node:22 AS base
 RUN npm install -g pnpm
 WORKDIR /app
 
