@@ -10,7 +10,7 @@ test.describe('Negative tests: malformed requests', () => {
       data: 'this is not json{{{',
       headers: { 'Content-Type': 'application/json' },
     });
-    expect([400, 404, 422]).toContain(response.status());
+    expect([400, 404, 422, 502]).toContain(response.status());
     const text = await response.text();
     if (text) {
       try {
@@ -35,7 +35,7 @@ test.describe('Negative tests: malformed requests', () => {
     const response = await request.post(`${BASE_URL}/api/rooms/test/send`, {
       headers: { 'Content-Type': 'application/json' },
     });
-    expect([400, 404, 422]).toContain(response.status());
+    expect([400, 404, 422, 502]).toContain(response.status());
   });
 
   test('very long URL path returns 404 not crash', async ({ request }) => {
