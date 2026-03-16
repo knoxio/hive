@@ -1,13 +1,8 @@
 # Multi-stage build for hive-web frontend
 # Uses pnpm for package management
 
-FROM debian:bookworm-slim AS base
-RUN apt-get update \
-    && apt-get install -y curl ca-certificates gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install -g pnpm \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:22-slim AS base
+RUN npm install -g pnpm
 WORKDIR /app
 
 FROM base AS deps
