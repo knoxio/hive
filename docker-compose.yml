@@ -1,7 +1,7 @@
 services:
   # Room daemon — real-time messaging infrastructure
   room-daemon:
-    image: rust:1.87-slim
+    image: rust:1-slim
     command: >
       sh -c "
         cargo install room-cli --version 3.5.1 &&
