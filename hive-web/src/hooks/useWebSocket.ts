@@ -59,7 +59,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const disconnect = useCallback(() => {
     retriesRef.current = maxRetries; // prevent reconnect
@@ -91,7 +91,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
       try {
         const data = JSON.parse(event.data) as RoomMessage;
         setMessages((prev) => [...prev, data]);
-      } catch {
+      } catch (_) {
         // Non-JSON message — ignore
       }
     };
