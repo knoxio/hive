@@ -24,10 +24,13 @@ services:
 
   # Hive frontend — dev mode with Vite HMR
   hive-web:
-    image: docker.io/library/node:lts
+    image: debian:bookworm-slim
     working_dir: /app
     command: >
       sh -c "
+        apt-get update && apt-get install -y curl ca-certificates gnupg &&
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash - &&
+        apt-get install -y nodejs &&
         npm install -g pnpm &&
         pnpm install &&
         pnpm dev --host 0.0.0.0 --port 5173
