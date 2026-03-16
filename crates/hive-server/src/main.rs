@@ -1,6 +1,7 @@
 mod config;
 pub mod daemon;
 pub mod error;
+mod ws_relay;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,6 +59,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/health", get(health))
+        .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
