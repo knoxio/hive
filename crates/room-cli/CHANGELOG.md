@@ -10,6 +10,8 @@ For changes prior to the workspace restructure (v0.1.2 through v1.0.2), see the
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-03-16
+
 ### Added
 
 - `room plugin list` now shows builtin plugins (agent, taskboard, queue, stats) as `[builtin]`
