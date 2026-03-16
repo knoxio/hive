@@ -40,6 +40,10 @@ build:
 # Run all tests
 test:
     cargo test -p hive-server
+
+# Run Playwright e2e tests (requires hive-server running on :3000)
+test-e2e:
+    cd hive-web && npx playwright test
     cd hive-web && pnpm test 2>/dev/null || echo "no frontend tests yet"
 
 # Format all code
