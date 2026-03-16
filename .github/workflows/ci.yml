@@ -43,4 +43,4 @@ jobs:
       - name: Build
         run: cd hive-web && pnpm build
       - name: Lint
-        run: cd hive-web && pnpm exec eslint src/ || true
+        run: cd hive-web && pnpm exec eslint src/

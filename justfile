@@ -54,7 +54,7 @@ fmt:
 # Lint all code
 lint:
     cargo clippy -- -D warnings
-    cd hive-web && pnpm exec eslint src/ 2>/dev/null || true
+    cd hive-web && pnpm exec eslint src/
 
 # Check everything (format + lint + test)
 check: fmt lint test
@@ -67,13 +67,13 @@ ci:
     cargo test -p hive-server
     cd hive-web && pnpm exec tsc --noEmit
     cd hive-web && pnpm build
-    cd hive-web && pnpm exec eslint src/ || true
+    cd hive-web && pnpm exec eslint src/
 
 # CI fix — auto-fix formatting and lint issues, then verify
 ci-fix:
     cargo fmt
     cargo clippy -p hive-server --fix --allow-dirty -- -D warnings
-    cd hive-web && pnpm exec eslint src/ --fix 2>/dev/null || true
+    cd hive-web && pnpm exec eslint src/ --fix
     @echo "--- verifying ---"
     just ci
 
