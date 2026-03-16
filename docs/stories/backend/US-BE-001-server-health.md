@@ -18,5 +18,12 @@
 - Use `axum::Router` to register the route
 - Uptime is calculated from a `start_time: std::time::Instant` stored in shared `AppState`
 
+## Clarifications (Sprint 19 Review)
+
+- **Daemon connectivity timeout**: 2 seconds. If the daemon does not respond to a health ping within 2s, report status as `"degraded"`.
+- **Startup behavior**: The health endpoint returns `{"status": "starting"}` until the first successful daemon ping completes. This prevents load balancers from routing traffic before the server has confirmed daemon reachability.
+- **Failure recovery**: After 3 consecutive daemon timeouts (each at the 2s threshold), report `{"status": "unhealthy", "error": "<detail>"}` instead of `"degraded"`. Reset the counter on any successful ping.
+- **Cache TTL**: 5 seconds as specified in technical notes, but invalidate the cached status immediately upon receiving a daemon disconnect event (e.g., WebSocket close or TCP reset). The next health check triggers a fresh probe rather than serving stale `"ok"`.
+
 ## Phase
 Phase 1 (Skeleton + Room Proxy)
