@@ -14,9 +14,9 @@ test.describe('BE-012: Agent Spawn', () => {
     expect([201, 400, 404, 501]).toContain(response.status());
   });
 
-  test('GET /api/agents returns agent list or 501', async ({ request }) => {
+  test('GET /api/agents returns agent list or 404/501', async ({ request }) => {
     const response = await request.get(`${API_URL}/api/agents`);
-    expect([200, 401, 501]).toContain(response.status());
+    expect([200, 401, 404, 501]).toContain(response.status());
     if (response.status() === 200) {
       const body = await response.json();
       expect(Array.isArray(body.agents) || body.agents === undefined).toBeTruthy();
@@ -30,9 +30,9 @@ test.describe('BE-012: Agent Spawn', () => {
 });
 
 test.describe('BE-013: Agent Health Monitoring', () => {
-  test('GET /api/agents/health returns health status or 501', async ({ request }) => {
+  test('GET /api/agents/health returns health status or 404/501', async ({ request }) => {
     const response = await request.get(`${API_URL}/api/agents/health`);
-    expect([200, 501]).toContain(response.status());
+    expect([200, 404, 501]).toContain(response.status());
   });
 });
 

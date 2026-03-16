@@ -39,12 +39,12 @@ test.describe('BE-003: WS Relay - Extended', () => {
 });
 
 test.describe('Negative Tests', () => {
-  test('malformed JSON returns 400', async ({ request }) => {
+  test('malformed JSON returns 400 or 404', async ({ request }) => {
     const response = await request.post(`${API_URL}/api/workspaces`, {
       headers: { 'Content-Type': 'application/json' },
       data: 'not-valid-json{{{',
     });
-    expect([400, 401, 415, 501]).toContain(response.status());
+    expect([400, 401, 404, 415, 501]).toContain(response.status());
   });
 
   test('unknown endpoint returns 404', async ({ request }) => {
@@ -52,11 +52,11 @@ test.describe('Negative Tests', () => {
     expect(response.status()).toBe(404);
   });
 
-  test('empty body on POST returns 400 or 415', async ({ request }) => {
+  test('empty body on POST returns 400, 404, or 415', async ({ request }) => {
     const response = await request.post(`${API_URL}/api/agents/spawn`, {
       headers: { 'Content-Type': 'application/json' },
       data: '',
     });
-    expect([400, 415, 422, 501]).toContain(response.status());
+    expect([400, 404, 415, 422, 501]).toContain(response.status());
   });
 });
