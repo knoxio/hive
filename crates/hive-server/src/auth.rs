@@ -1,5 +1,5 @@
 use axum::extract::State;
-use axum::http::{header, Request, StatusCode};
+use axum::http::{header, Request};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -9,8 +9,8 @@ use std::sync::Arc;
 use crate::error::HiveError;
 use crate::AppState;
 
-/// Secret used to sign JWTs. In production, load from env/config.
-const JWT_SECRET: &str = "hive-dev-secret-change-in-production";
+// JWT_SECRET will be used when we switch to HMAC-SHA256 signed tokens.
+// For MVP, tokens are base64-encoded claims (not cryptographically signed).
 
 /// Token response returned by POST /api/auth/token.
 #[derive(Serialize)]
@@ -42,7 +42,7 @@ pub struct Claims {
 ///
 /// For MVP: accepts any username (no password validation).
 /// Production: validate against user database or OAuth provider.
-pub async fn issue_token(
+pub(crate) async fn issue_token(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<TokenResponse>, HiveError> {
@@ -76,7 +76,8 @@ pub async fn issue_token(
 }
 
 /// Auth middleware — validates Bearer token on protected routes.
-pub async fn auth_middleware(
+#[allow(dead_code)]
+pub(crate) async fn auth_middleware(
     State(_state): State<Arc<AppState>>,
     request: Request<axum::body::Body>,
     next: Next,
@@ -105,6 +106,7 @@ pub async fn auth_middleware(
 }
 
 /// Validate a token and extract claims.
+#[allow(dead_code)]
 fn validate_token(token: &str) -> Result<Claims, String> {
     let decoded = base64_decode(token).map_err(|_| "invalid token encoding".to_string())?;
     let claims: Claims =
@@ -129,6 +131,7 @@ fn base64_encode(input: &str) -> String {
 }
 
 /// Simple base64 decode (URL-safe, no padding).
+#[allow(dead_code)]
 fn base64_decode(input: &str) -> Result<String, String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
