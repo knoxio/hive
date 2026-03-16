@@ -8,7 +8,10 @@ mod ws_relay;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::{routing::{get, post}, Json, Router};
+use axum::{
+    routing::{get, post},
+    Json, Router,
+};
 use config::HiveConfig;
 
 /// Shared application state.
@@ -32,7 +35,9 @@ struct HealthResponse {
 /// GET /api/health — returns server status, version, uptime, and daemon connection.
 async fn health(state: axum::extract::State<Arc<AppState>>) -> Json<HealthResponse> {
     let daemon_url = state.config.daemon.ws_url.clone();
-    let base = daemon_url.replace("ws://", "http://").replace("wss://", "https://");
+    let base = daemon_url
+        .replace("ws://", "http://")
+        .replace("wss://", "https://");
     let daemon_connected = reqwest::Client::new()
         .get(format!("{base}/api/health"))
         .timeout(std::time::Duration::from_secs(2))
@@ -96,7 +101,10 @@ async fn main() {
         .route("/api/health", get(health))
         .route("/api/rooms", get(rest_proxy::list_rooms))
         .route("/api/rooms/{room_id}", get(rest_proxy::get_room))
-        .route("/api/rooms/{room_id}/messages", get(rest_proxy::get_messages))
+        .route(
+            "/api/rooms/{room_id}/messages",
+            get(rest_proxy::get_messages),
+        )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .with_state(state);

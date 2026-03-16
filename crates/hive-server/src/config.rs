@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 /// Top-level Hive server configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct HiveConfig {
     /// HTTP server settings.
@@ -39,14 +39,6 @@ pub struct DaemonConfig {
     pub ws_url: String,
 }
 
-impl Default for HiveConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            daemon: DaemonConfig::default(),
-        }
-    }
-}
 
 impl Default for ServerConfig {
     fn default() -> Self {
