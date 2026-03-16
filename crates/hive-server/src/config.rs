@@ -25,6 +25,8 @@ pub struct ServerConfig {
     pub host: String,
     /// Port for the HTTP server.
     pub port: u16,
+    /// Directory for persistent data (SQLite database, etc.).
+    pub data_dir: String,
 }
 
 /// Room daemon connection configuration.
@@ -51,6 +53,7 @@ impl Default for ServerConfig {
         Self {
             host: "127.0.0.1".to_owned(),
             port: 3000,
+            data_dir: "data".to_owned(),
         }
     }
 }
@@ -68,7 +71,10 @@ impl Default for DaemonConfig {
 pub fn load_config(path: &Path) -> HiveConfig {
     match std::fs::read_to_string(path) {
         Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
-            eprintln!("[hive] warning: invalid config {}: {e} — using defaults", path.display());
+            eprintln!(
+                "[hive] warning: invalid config {}: {e} — using defaults",
+                path.display()
+            );
             HiveConfig::default()
         }),
         Err(_) => {
