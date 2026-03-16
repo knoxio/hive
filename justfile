@@ -2,15 +2,15 @@
 # Install: cargo install just
 # Prerequisites: rust, node 22+, just, docker (for `just dev`)
 
-# Ensure pnpm is available via corepack
+# Ensure pnpm is available
 setup:
-    corepack enable
+    npm install -g pnpm
     cd hive-web && pnpm install
 
 # Start all services for development (room daemon + hive-server + hive-web)
 dev:
     @echo "Starting Hive dev environment..."
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --pull always
 
 # Start services without Docker (requires room, cargo, node on PATH)
 dev-local:
