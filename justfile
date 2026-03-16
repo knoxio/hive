@@ -1,15 +1,22 @@
 # Hive development commands
 # Install: cargo install just
+# Prerequisites: rust, node 22+, just, docker (for `just dev`)
+
+# Ensure pnpm is available via corepack
+setup:
+    corepack enable
+    cd hive-web && pnpm install
 
 # Start all services for development (room daemon + hive-server + hive-web)
 dev:
     @echo "Starting Hive dev environment..."
     docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
-# Start services without Docker (requires room, cargo, pnpm on PATH)
+# Start services without Docker (requires room, cargo, node on PATH)
 dev-local:
     #!/usr/bin/env bash
     set -euo pipefail
+    corepack enable 2>/dev/null || true
     echo "Starting room daemon..."
     room daemon --persistent --ws-port 4200 &
     ROOM_PID=$!
