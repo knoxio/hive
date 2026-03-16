@@ -25,14 +25,29 @@ struct HealthResponse {
     status: &'static str,
     version: &'static str,
     uptime_secs: u64,
+    daemon_connected: bool,
+    daemon_url: String,
 }
 
-/// GET /api/health — returns server status, version, and uptime.
+/// GET /api/health — returns server status, version, uptime, and daemon connection.
 async fn health(state: axum::extract::State<Arc<AppState>>) -> Json<HealthResponse> {
+    let daemon_url = state.config.daemon.ws_url.clone();
+    let base = daemon_url.replace("ws://", "http://").replace("wss://", "https://");
+    let daemon_connected = reqwest::Client::new()
+        .get(format!("{base}/api/health"))
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .is_ok();
+
+    let status = if daemon_connected { "ok" } else { "degraded" };
+
     Json(HealthResponse {
-        status: "ok",
+        status,
         version: env!("CARGO_PKG_VERSION"),
         uptime_secs: state.start_time.elapsed().as_secs(),
+        daemon_connected,
+        daemon_url,
     })
 }
 
