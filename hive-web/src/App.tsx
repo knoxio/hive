@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
@@ -9,6 +10,7 @@ import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
 
 type Tab = "rooms" | "agents" | "tasks" | "costs";
+const TABS: Tab[] = ["rooms", "agents", "tasks", "costs"];
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
@@ -29,7 +31,17 @@ function StatusDot({ status }: { status: ConnectionStatus }) {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("rooms");
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Derive active tab from URL path
+  const pathTab = location.pathname.split("/")[1] as Tab;
+  const activeTab: Tab = TABS.includes(pathTab) ? pathTab : "rooms";
+  const setActiveTab = useCallback(
+    (tab: Tab) => navigate(`/${tab}`),
+    [navigate]
+  );
+
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
 
@@ -109,16 +121,15 @@ function App() {
 
   // Keyboard shortcuts for tab switching
   useEffect(() => {
-    const tabs: Tab[] = ["rooms", "agents", "tasks", "costs"];
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key >= "1" && e.key <= "4") {
         e.preventDefault();
-        setActiveTab(tabs[parseInt(e.key) - 1]);
+        setActiveTab(TABS[parseInt(e.key) - 1]);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [setActiveTab]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
