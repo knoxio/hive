@@ -24,7 +24,7 @@ services:
 
   # Hive frontend — dev mode with Vite HMR
   hive-web:
-    image: node:22
+    image: docker.io/library/node:22
     working_dir: /app
     command: >
       sh -c "
