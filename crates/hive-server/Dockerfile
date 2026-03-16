@@ -1,7 +1,7 @@
 # Multi-stage Rust build for hive-server
 # Uses cargo-chef for dependency caching
 
-FROM rust:1.84-slim AS chef
+FROM rust:1.87-slim AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
