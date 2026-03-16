@@ -13,6 +13,12 @@
 - [ ] When the frontend disconnects, the daemon connection is torn down cleanly
 - [ ] Connection errors to the daemon return an HTTP `502 Bad Gateway` before the WebSocket upgrade completes
 - [ ] Relay handles at least 100 concurrent connections without degradation
+- [ ] Frontend sends Hive auth token in `Authorization` header or query param; Hive maps it to a room token before connecting to daemon via `SESSION:<room_token>` handshake
+- [ ] If no valid Hive token is provided, the upgrade returns `401 Unauthorized`
+
+## Dependencies
+- US-BE-002 (config — provides `room_ws_url`)
+- US-BE-009 (session management — for auth token validation in Phase 2; Phase 1 can skip auth)
 
 ## Technical Notes
 - Implement in `crates/hive-server/src/ws_relay.rs`
