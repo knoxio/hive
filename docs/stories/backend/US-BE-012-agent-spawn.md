@@ -10,8 +10,14 @@
 - [ ] `personality` is a string passed as `--personality` to `room-ralph`; invalid personalities return `400 Bad Request`
 - [ ] `model` defaults to `sonnet` if absent
 - [ ] Agent record is created in SQLite with status `starting`; status transitions to `running` once the process is confirmed alive
-- [ ] Returns `409 Conflict` if an agent with the same `personality` is already running in the same room
+- [ ] Returns `409 Conflict` if an agent with the same `username` is already running in the same room (multiple agents with the same personality are allowed — e.g. coder-anna and coder-kai are both "coder")
 - [ ] Maximum concurrent agents per workspace is enforced (`max_agents_per_workspace` in config, default 10)
+- [ ] Agent username is auto-generated from `<personality>-<name>` where name is picked from the personality's name pool
+- [ ] Spawn failure (process exits within 5s) transitions status to `failed` with error message
+
+## Dependencies
+- US-BE-011 (token mapping — agents need room tokens)
+- US-BE-016 (workspace provisioning — agents need workdirs)
 
 ## Technical Notes
 - Implement in `crates/hive-server/src/agents.rs`
