@@ -1,3 +1,4 @@
+pub mod auth;
 mod config;
 pub mod daemon;
 pub mod db;
@@ -99,6 +100,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/health", get(health))
+        .route("/api/auth/token", post(auth::issue_token))
         .route("/api/rooms", get(rest_proxy::list_rooms))
         .route("/api/rooms/{room_id}", get(rest_proxy::get_room))
         .route(
