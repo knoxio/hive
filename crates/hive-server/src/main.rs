@@ -1,4 +1,5 @@
 mod config;
+pub mod daemon;
 pub mod error;
 
 use std::path::PathBuf;
