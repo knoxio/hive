@@ -50,10 +50,15 @@ impl Default for HiveConfig {
 
 impl Default for ServerConfig {
     fn default() -> Self {
+        let data_dir = dirs::home_dir()
+            .map(|h| h.join(".hive").join("data"))
+            .unwrap_or_else(|| PathBuf::from("data"))
+            .to_string_lossy()
+            .into_owned();
         Self {
             host: "127.0.0.1".to_owned(),
             port: 3000,
-            data_dir: "data".to_owned(),
+            data_dir,
         }
     }
 }
