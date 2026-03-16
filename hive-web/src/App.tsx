@@ -40,7 +40,7 @@ function App() {
     autoConnect: !!selectedRoomId,
   });
 
-  // Fetch rooms from backend
+  // Fetch rooms from backend API — no hardcoded fallback
   const fetchRooms = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/rooms`);
@@ -57,10 +57,13 @@ function App() {
             unreadCount: 0,
           }))
         );
+      } else {
+        console.warn(`Failed to fetch rooms: ${res.status}`);
+        setRooms([]);
       }
-    } catch {
-      // Backend may not have /api/rooms yet — use fallback
-      setRooms([{ id: "room-dev", name: "room-dev", unreadCount: 0 }]);
+    } catch (err) {
+      console.warn("Cannot connect to hive-server:", err);
+      setRooms([]);
     }
   }, []);
 
