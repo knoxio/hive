@@ -1,80 +1,227 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RoomList } from "./components/RoomList";
+import ChatTimeline from "./components/ChatTimeline";
+import { MemberPanel } from "./components/MemberPanel";
+import { MessageInput } from "./components/MessageInput";
+import { useWebSocket } from "./hooks/useWebSocket";
+import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
+import type { Member } from "./components/MemberPanel";
 
 type Tab = "rooms" | "agents" | "tasks" | "costs";
 
-// Placeholder rooms for development
-const DEMO_ROOMS: Room[] = [
-  { id: "room-dev", name: "room-dev", unreadCount: 3 },
-  { id: "room-qa", name: "room-qa", unreadCount: 0 },
-  { id: "room-design", name: "room-design", unreadCount: 12 },
-];
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const WS_BASE = API_BASE.replace(/^http/, "ws");
+
+/** Connection status indicator dot. */
+function StatusDot({ status }: { status: ConnectionStatus }) {
+  const colors: Record<ConnectionStatus, string> = {
+    connected: "bg-green-500",
+    connecting: "bg-yellow-500 animate-pulse",
+    disconnected: "bg-red-500",
+  };
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-gray-400">
+      <span className={`w-2 h-2 rounded-full ${colors[status]}`} />
+      {status}
+    </div>
+  );
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("rooms");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+
+  // WebSocket connection to the selected room
+  const wsUrl = selectedRoomId ? `${WS_BASE}/ws/${selectedRoomId}` : "";
+  const { status, messages, sendMessage, clearMessages } = useWebSocket({
+    url: wsUrl,
+    autoConnect: !!selectedRoomId,
+  });
+
+  // Fetch rooms from backend
+  const fetchRooms = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/rooms`);
+      if (res.ok) {
+        const data = await res.json();
+        const roomList = (data.rooms || data || []) as Array<{
+          id: string;
+          name?: string;
+        }>;
+        setRooms(
+          roomList.map((r) => ({
+            id: r.id || r.name || "",
+            name: r.name || r.id || "",
+            unreadCount: 0,
+          }))
+        );
+      }
+    } catch {
+      // Backend may not have /api/rooms yet — use fallback
+      setRooms([{ id: "room-dev", name: "room-dev", unreadCount: 0 }]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRooms();
+  }, [fetchRooms]);
+
+  // Extract members from messages
+  const members: Member[] = (() => {
+    const seen = new Map<string, Member>();
+    for (const msg of messages) {
+      if (msg.user && !seen.has(msg.user)) {
+        seen.set(msg.user, {
+          username: msg.user,
+          status: msg.type === "system" ? undefined : "online",
+          isAgent: /^(coder-|scout-|ba|r2d2|wall-e|saphire|bumblebee|sonnet-)/.test(
+            msg.user
+          ),
+        });
+      }
+    }
+    return Array.from(seen.values());
+  })();
+
+  // Handle room selection
+  const handleSelectRoom = useCallback(
+    (roomId: string) => {
+      if (roomId !== selectedRoomId) {
+        clearMessages();
+        setSelectedRoomId(roomId);
+      }
+    },
+    [selectedRoomId, clearMessages]
+  );
+
+  // Handle sending messages
+  const handleSend = useCallback(
+    (content: string) => {
+      sendMessage(content);
+    },
+    [sendMessage]
+  );
+
+  // Keyboard shortcuts for tab switching
+  useEffect(() => {
+    const tabs: Tab[] = ["rooms", "agents", "tasks", "costs"];
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key >= "1" && e.key <= "4") {
+        e.preventDefault();
+        setActiveTab(tabs[parseInt(e.key) - 1]);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
       {/* Top navigation tabs */}
       <nav className="flex items-center gap-1 px-4 py-2 bg-gray-800 border-b border-gray-700">
-        <span className="font-bold text-lg mr-6 text-blue-400">Hive</span>
-        {(["rooms", "agents", "tasks", "costs"] as Tab[]).map((tab) => (
+        <span className="font-bold text-lg mr-4 text-blue-400">Hive</span>
+        {(["rooms", "agents", "tasks", "costs"] as Tab[]).map((tab, i) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
+            aria-selected={activeTab === tab}
+            role="tab"
             className={`px-3 py-1.5 rounded text-sm font-medium capitalize transition-colors ${
               activeTab === tab
                 ? "bg-blue-600 text-white"
                 : "text-gray-400 hover:text-gray-200 hover:bg-gray-700"
             }`}
+            title={`Ctrl+${i + 1}`}
           >
             {tab}
           </button>
         ))}
+        <div className="ml-auto">
+          <StatusDot status={status} />
+        </div>
       </nav>
 
       {/* Three-panel layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
-        <aside className="w-60 bg-gray-800 border-r border-gray-700 flex flex-col">
+        <aside className="w-60 bg-gray-800 border-r border-gray-700 flex flex-col sidebar">
           <div className="p-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            {activeTab === "rooms" ? "Rooms" : activeTab === "agents" ? "Agents" : activeTab === "tasks" ? "Tasks" : "Costs"}
+            {activeTab}
           </div>
           <div className="flex-1 overflow-y-auto">
             {activeTab === "rooms" ? (
               <RoomList
-                rooms={DEMO_ROOMS}
+                rooms={rooms}
                 selectedRoomId={selectedRoomId}
-                onSelectRoom={setSelectedRoomId}
+                onSelectRoom={handleSelectRoom}
               />
             ) : (
-              <div className="px-3 py-2 text-sm text-gray-500">No items yet</div>
+              <div className="px-3 py-2 text-sm text-gray-500">
+                Coming soon
+              </div>
             )}
           </div>
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold mb-2 capitalize">{activeTab}</h2>
-              <p className="text-sm">Select an item from the sidebar</p>
+        <main className="flex-1 flex flex-col overflow-hidden main-content">
+          {activeTab === "rooms" && selectedRoomId ? (
+            <>
+              {/* Room header */}
+              <div className="px-4 py-2 border-b border-gray-700 bg-gray-800">
+                <h2 className="text-sm font-semibold">#{selectedRoomId}</h2>
+              </div>
+              {/* Chat timeline */}
+              <div className="flex-1 overflow-y-auto" data-testid="chat-timeline">
+                <ChatTimeline messages={messages} currentUser="hive-user" />
+              </div>
+              {/* Message input */}
+              <MessageInput
+                onSend={handleSend}
+                connected={status === "connected"}
+              />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <h2 className="text-xl font-semibold mb-2 capitalize">
+                  {activeTab}
+                </h2>
+                <p className="text-sm">
+                  {activeTab === "rooms"
+                    ? "Select a room from the sidebar"
+                    : "Coming soon"}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </main>
 
         {/* Right context panel */}
-        <aside className="w-72 bg-gray-800 border-l border-gray-700 flex flex-col">
-          <div className="p-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Details
-          </div>
-          <div className="flex-1 px-3 text-sm text-gray-500">
-            <p>No selection</p>
-          </div>
+        <aside className="w-72 bg-gray-800 border-l border-gray-700 flex flex-col context-panel">
+          {activeTab === "rooms" && selectedRoomId ? (
+            <MemberPanel members={members} roomName={selectedRoomId} />
+          ) : (
+            <>
+              <div className="p-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Details
+              </div>
+              <div className="flex-1 px-3 text-sm text-gray-500">
+                <p>No selection</p>
+              </div>
+            </>
+          )}
         </aside>
       </div>
+
+      {/* Reconnecting banner */}
+      {status === "connecting" && selectedRoomId && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-yellow-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+          Reconnecting to {selectedRoomId}...
+        </div>
+      )}
     </div>
   );
 }
