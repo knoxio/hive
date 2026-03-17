@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
+
 ### Added
 - `GET /api/users/me` endpoint — returns username, role, and ID from JWT claims (MH-011)
 - Profile page at `/profile` — displays avatar initials, username, role badge, and user ID
