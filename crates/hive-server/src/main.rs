@@ -146,7 +146,10 @@ async fn main() {
             "/api/rooms",
             get(rooms::list_rooms).post(rooms::create_room),
         )
-        .route("/api/rooms/{room_id}", get(rest_proxy::get_room))
+        .route(
+            "/api/rooms/{room_id}",
+            get(rest_proxy::get_room).delete(rooms::delete_room),
+        )
         .route(
             "/api/rooms/{room_id}/messages",
             get(rest_proxy::get_messages),

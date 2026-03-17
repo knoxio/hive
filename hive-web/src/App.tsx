@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
 import { CreateRoomModal } from "./components/CreateRoomModal";
+import { DeleteRoomModal } from "./components/DeleteRoomModal";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
 import { MessageInput } from "./components/MessageInput";
@@ -65,6 +66,7 @@ function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [showDeleteRoom, setShowDeleteRoom] = useState(false);
 
   /** Invalidate the server-side token and clear local auth state. */
   const handleLogout = useCallback(async () => {
@@ -167,6 +169,14 @@ function App() {
     setSelectedRoomId(roomId);
     setShowCreateRoom(false);
   }, [clearMessages]);
+
+  /** Called after a room is successfully deleted: remove it from the list and deselect. */
+  const handleRoomDeleted = useCallback(() => {
+    setRooms((prev) => prev.filter((r) => r.id !== selectedRoomId));
+    clearMessages();
+    setSelectedRoomId(null);
+    setShowDeleteRoom(false);
+  }, [selectedRoomId, clearMessages]);
 
   // Handle sending messages
   const handleSend = useCallback(
@@ -287,8 +297,17 @@ function App() {
           {activeTab === "rooms" && selectedRoomId ? (
             <>
               {/* Room header */}
-              <div className="px-4 py-2 border-b border-gray-700 bg-gray-800">
+              <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">#{selectedRoomId}</h2>
+                <button
+                  onClick={() => setShowDeleteRoom(true)}
+                  aria-label="Delete room"
+                  data-testid="delete-room-button"
+                  className="text-gray-500 hover:text-red-400 transition-colors"
+                  title="Delete room"
+                >
+                  🗑
+                </button>
               </div>
               {/* Chat timeline */}
               <div className="flex-1 overflow-y-auto" data-testid="chat-timeline">
@@ -347,6 +366,15 @@ function App() {
         <CreateRoomModal
           onCreated={handleRoomCreated}
           onClose={() => setShowCreateRoom(false)}
+        />
+      )}
+
+      {/* Delete room modal */}
+      {showDeleteRoom && selectedRoomId && (
+        <DeleteRoomModal
+          roomId={selectedRoomId}
+          onDeleted={handleRoomDeleted}
+          onClose={() => setShowDeleteRoom(false)}
         />
       )}
     </div>
