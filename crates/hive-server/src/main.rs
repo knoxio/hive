@@ -7,6 +7,7 @@ pub mod error;
 mod rest_proxy;
 pub mod rooms;
 pub mod settings;
+pub mod setup;
 pub mod users;
 mod ws_relay;
 
@@ -121,7 +122,12 @@ async fn main() {
     // Public routes — no auth required.
     let public_routes = Router::new()
         .route("/api/health", get(health))
-        .route("/api/auth/login", post(auth::login));
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/setup/status", get(setup::get_status))
+        .route("/api/setup/verify-daemon", post(setup::verify_daemon))
+        .route("/api/setup/configure", post(setup::configure))
+        .route("/api/setup/create-admin", post(setup::create_admin))
+        .route("/api/setup/complete", post(setup::complete));
 
     // Protected routes — require valid Bearer JWT.
     let protected_routes = Router::new()
