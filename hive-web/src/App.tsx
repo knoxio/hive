@@ -5,6 +5,7 @@ import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
 import { MessageInput } from "./components/MessageInput";
 import { AgentGrid } from "./components/AgentGrid";
+import { NotFoundPage } from "./components/ErrorPage";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
@@ -37,7 +38,9 @@ function App() {
 
   // Derive active tab from URL path
   const pathTab = location.pathname.split("/")[1] as Tab;
-  const activeTab: Tab = TABS.includes(pathTab) ? pathTab : "rooms";
+  const isRootPath = location.pathname === "/" || location.pathname === "";
+  const isKnownTab = TABS.includes(pathTab);
+  const activeTab: Tab = isKnownTab ? pathTab : "rooms";
   const setActiveTab = useCallback(
     (tab: Tab) => navigate(`/${tab}`),
     [navigate]
@@ -135,6 +138,11 @@ function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [setActiveTab]);
+
+  // Render 404 for unknown routes (after hooks — hooks must always run)
+  if (!isRootPath && !isKnownTab) {
+    return <NotFoundPage />;
+  }
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
