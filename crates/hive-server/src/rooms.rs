@@ -91,6 +91,14 @@ fn validate_room_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate room description length: max 280 characters.
+fn validate_description_len(desc: &str) -> Result<(), &'static str> {
+    if desc.len() > 280 {
+        return Err("description must be 280 characters or fewer");
+    }
+    Ok(())
+}
+
 /// Derive a room ID from a name: lowercase, spaces → hyphens.
 ///
 /// The caller is responsible for ensuring uniqueness (appending a suffix if
@@ -322,10 +330,10 @@ pub async fn patch_room(
 
     // Validate description length if provided.
     if let Some(ref desc) = body.description {
-        if desc.len() > 280 {
+        if let Err(msg) = validate_description_len(desc) {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "description must be 280 characters or fewer"})),
+                Json(serde_json::json!({"error": msg})),
             )
                 .into_response();
         }
@@ -867,11 +875,10 @@ mod tests {
     }
 
     #[test]
-    fn patch_room_description_too_long_rejected() {
-        let long_desc = "a".repeat(281);
-        // Validation is in the HTTP handler; test the length boundary directly.
-        assert!(long_desc.len() > 280);
-        assert!("a".repeat(280).len() <= 280);
+    fn description_length_validation_enforces_280_char_limit() {
+        assert!(validate_description_len(&"a".repeat(281)).is_err());
+        assert!(validate_description_len(&"a".repeat(280)).is_ok());
+        assert!(validate_description_len("").is_ok());
     }
 
     #[test]
