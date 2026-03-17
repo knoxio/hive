@@ -26,13 +26,10 @@ pub enum HiveError {
 }
 
 /// JSON body returned for all error responses.
+///
+/// Shape: `{ "code": "UNAUTHORIZED", "message": "..." }`
 #[derive(Serialize)]
 struct ErrorBody {
-    error: ErrorDetail,
-}
-
-#[derive(Serialize)]
-struct ErrorDetail {
     code: &'static str,
     message: String,
 }
@@ -52,13 +49,13 @@ impl HiveError {
 
     fn error_code(&self) -> &'static str {
         match self {
-            Self::NotFound(_) => "not_found",
-            Self::BadRequest(_) => "bad_request",
-            Self::Unauthorized(_) => "unauthorized",
-            Self::Forbidden(_) => "forbidden",
-            Self::Conflict(_) => "conflict",
-            Self::DaemonUnavailable(_) => "daemon_unavailable",
-            Self::Internal(_) => "internal_error",
+            Self::NotFound(_) => "NOT_FOUND",
+            Self::BadRequest(_) => "BAD_REQUEST",
+            Self::Unauthorized(_) => "UNAUTHORIZED",
+            Self::Forbidden(_) => "FORBIDDEN",
+            Self::Conflict(_) => "CONFLICT",
+            Self::DaemonUnavailable(_) => "DAEMON_UNAVAILABLE",
+            Self::Internal(_) => "INTERNAL_ERROR",
         }
     }
 
@@ -79,10 +76,8 @@ impl IntoResponse for HiveError {
     fn into_response(self) -> Response {
         let status = self.status_code();
         let body = ErrorBody {
-            error: ErrorDetail {
-                code: self.error_code(),
-                message: self.message().to_owned(),
-            },
+            code: self.error_code(),
+            message: self.message().to_owned(),
         };
         (status, axum::Json(body)).into_response()
     }
@@ -112,8 +107,8 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         let body = to_bytes(resp.into_body(), 1024).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["error"]["code"], "not_found");
-        assert_eq!(json["error"]["message"], "workspace not found");
+        assert_eq!(json["code"], "NOT_FOUND");
+        assert_eq!(json["message"], "workspace not found");
     }
 
     #[tokio::test]
@@ -176,7 +171,7 @@ mod tests {
     #[test]
     fn display_includes_code_and_message() {
         let err = HiveError::BadRequest("oops".into());
-        assert_eq!(err.to_string(), "bad_request: oops");
+        assert_eq!(err.to_string(), "BAD_REQUEST: oops");
     }
 
     #[test]

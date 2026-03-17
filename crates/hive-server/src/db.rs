@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 /// Schema version — bump when adding new migrations.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// SQL statements for schema v1.
 const SCHEMA_V1: &str = r#"
@@ -66,6 +66,24 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value       TEXT NOT NULL,
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by  TEXT
+);
+"#;
+
+/// SQL statements for schema v3 — JWT auth tables.
+const SCHEMA_V3: &str = r#"
+CREATE TABLE IF NOT EXISTS local_users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'user',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    jti        TEXT PRIMARY KEY,
+    user_id    INTEGER,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 "#;
 
@@ -136,6 +154,12 @@ impl Database {
             tracing::info!("database migrated to schema v2");
         }
 
+        if current < 3 {
+            conn.execute_batch(SCHEMA_V3)?;
+            conn.execute("INSERT INTO _migrations (version) VALUES (3)", [])?;
+            tracing::info!("database migrated to schema v3");
+        }
+
         let final_version: i64 = conn.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM _migrations",
             [],
@@ -177,6 +201,8 @@ mod tests {
             assert!(names.contains(&"api_keys".to_owned()));
             assert!(names.contains(&"team_manifests".to_owned()));
             assert!(names.contains(&"app_settings".to_owned()));
+            assert!(names.contains(&"local_users".to_owned()));
+            assert!(names.contains(&"revoked_tokens".to_owned()));
             assert!(names.contains(&"_migrations".to_owned()));
             Ok(())
         })
