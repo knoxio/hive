@@ -11,6 +11,7 @@ pub mod rooms;
 pub mod settings;
 pub mod setup;
 pub mod users;
+pub mod util;
 mod ws_relay;
 
 use std::path::PathBuf;
