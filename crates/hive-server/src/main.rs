@@ -13,8 +13,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use tower_http::cors::{Any, CorsLayer};
 use config::HiveConfig;
+use tower_http::cors::{Any, CorsLayer};
 
 /// Shared application state.
 struct AppState {
