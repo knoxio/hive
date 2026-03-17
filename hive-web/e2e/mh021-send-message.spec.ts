@@ -33,20 +33,6 @@ async function loginAsAdmin(
   return body.token as string;
 }
 
-/** Create a room and return its ID, accepting 201 or 409 (already exists). */
-async function ensureRoom(
-  request: Parameters<typeof test>[1] extends { request: infer R } ? R : never,
-  token: string,
-  roomId: string,
-): Promise<void> {
-  const res = await request.post(`${API_URL}/api/rooms`, {
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    data: { id: roomId, name: roomId },
-  });
-  // 201 = created, 409 = already exists — both are fine for test setup.
-  expect([201, 409]).toContain(res.status());
-}
-
 // ---------------------------------------------------------------------------
 // AC-1: Send message — auth enforced
 // ---------------------------------------------------------------------------

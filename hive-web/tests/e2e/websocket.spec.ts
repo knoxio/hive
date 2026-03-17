@@ -23,10 +23,6 @@ test.describe('FE-007: WebSocket Connection', () => {
     ).first();
     if (await indicator.isVisible()) {
       // Should show connected state (green or "connected" text)
-      const classes = await indicator.getAttribute('class') || '';
-      const text = await indicator.textContent() || '';
-      const isConnected = classes.includes('green') || classes.includes('connected') ||
-                          text.toLowerCase().includes('connected');
       // Note: may show disconnected if no backend running — that's also valid behavior
       expect(indicator).toBeTruthy();
     }

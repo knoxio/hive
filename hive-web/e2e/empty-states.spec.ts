@@ -29,18 +29,6 @@ async function mockEmptyAgents(page: import('@playwright/test').Page) {
   );
 }
 
-/**
- * Intercept all /api/* calls to simulate the daemon being offline (503).
- */
-async function mockDaemonOffline(page: import('@playwright/test').Page) {
-  await page.route('**/api/rooms', (route) =>
-    route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'daemon unreachable' }) }),
-  );
-  await page.route('**/api/agents', (route) =>
-    route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'daemon unreachable' }) }),
-  );
-}
-
 // ---------------------------------------------------------------------------
 // MH-005 — Room list empty state
 // ---------------------------------------------------------------------------

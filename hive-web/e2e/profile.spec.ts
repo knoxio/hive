@@ -29,7 +29,6 @@ function makeToken(data: {
 }
 
 const DEFAULT_PROFILE = { id: '1', username: 'alice', role: 'admin' };
-const DEFAULT_TOKEN = makeToken({ sub: '1', username: 'alice', role: 'admin' });
 
 /**
  * Set auth token in localStorage and stub the common protected endpoints.
