@@ -579,6 +579,7 @@ function App() {
               </div>
               {/* Chat timeline */}
               <ChatTimeline
+                key={selectedRoomId ?? ''}
                 messages={allMessages}
                 currentUser={getUserFromToken()?.username ?? "hive-user"}
                 onLoadMore={() => void loadMore(selectedRoomId)}

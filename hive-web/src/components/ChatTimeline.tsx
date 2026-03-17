@@ -45,6 +45,10 @@ function buildGroupFlags(messages: RoomMessage[]): boolean[] {
  * Scroll anchoring: when prepending historical messages at the top, the
  * visible content does not jump — we preserve the relative scroll offset by
  * recording scrollHeight before the update and correcting scrollTop after.
+ *
+ * Room switching is handled by the parent passing key={roomId} — React
+ * remounts this component on room change, resetting all internal state
+ * automatically and scrolling to the bottom on mount.
  */
 export default function ChatTimeline({
   messages,
@@ -57,6 +61,9 @@ export default function ChatTimeline({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
+  // prevLengthRef tracks the message count as of the last useEffect run.
+  // It must only be updated inside useEffect (not useLayoutEffect) so that
+  // the unseen-count calculation can read the pre-render length.
   const prevLengthRef = useRef(messages.length);
 
   // Scroll anchoring: record scrollHeight before prepend, restore after.
@@ -81,6 +88,16 @@ export default function ChatTimeline({
   // A prepend increases length but the first message ID changes.
   const firstMsgIdRef = useRef<string | undefined>(messages[0]?.id);
 
+  // On mount: instantly scroll to the bottom (room was just selected / component remounted).
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
+  // Scroll anchoring: restore scroll position after a prepend to prevent
+  // the visible content from jumping upward.
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -100,10 +117,13 @@ export default function ChatTimeline({
     }
 
     firstMsgIdRef.current = newFirstId;
-    prevLengthRef.current = messages.length;
+    // NOTE: prevLengthRef is intentionally NOT updated here.
+    // It is updated in the useEffect below so that the unseen-count
+    // calculation can read the pre-render message count.
   }, [messages]);
 
   // Auto-scroll to bottom on new appended messages when already at bottom.
+  // Also increments unseenCount when the user is scrolled up.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -117,6 +137,8 @@ export default function ChatTimeline({
         setUnseenCount((prev) => prev + newCount);
       }
     }
+    // Update prevLengthRef after reading it, so the next render's delta is correct.
+    prevLengthRef.current = messages.length;
   }, [messages.length, isAtBottom]);
 
   function handleScroll() {
@@ -176,6 +198,7 @@ export default function ChatTimeline({
 
       {unseenCount > 0 && (
         <button
+          data-testid="new-messages-badge"
           onClick={scrollToBottom}
           className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg transition-colors"
         >
