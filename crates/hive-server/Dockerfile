@@ -5,6 +5,15 @@ FROM rust:1-slim AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 
+# Development stage — cargo-watch for live reload
+# Source is mounted as a volume at build time; no COPY needed.
+FROM chef AS dev
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-watch --locked
+EXPOSE 3000
+ENV RUST_LOG=hive=debug
+CMD ["cargo", "watch", "-x", "run -p hive-server"]
+
 FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
