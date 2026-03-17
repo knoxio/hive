@@ -13,6 +13,8 @@ import { AgentGrid } from "./components/AgentGrid";
 import { NotFoundPage } from "./components/ErrorPage";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useConnectionStatus } from "./hooks/useConnectionStatus";
+import type { RoomMessage } from "./hooks/useWebSocket";
+import { useMessageHistory } from "./hooks/useMessageHistory";
 import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
 import { authHeader, clearToken, getToken, getUserFromToken } from "./lib/auth";
@@ -83,8 +85,6 @@ function App() {
 
   /** Per-room scroll positions — preserved across room switches. */
   const scrollPositions = useRef<Map<string, number>>(new Map());
-  /** Ref to the chat timeline scroll container. */
-  const chatScrollRef = useRef<HTMLDivElement>(null);
   /** API-fetched member list (offline baseline). Refreshed on room selection. */
   const [apiMembers, setApiMembers] = useState<Member[]>([]);
   /** Ref to track which room the apiMembers were fetched for (avoids stale overwrites). */
@@ -118,6 +118,23 @@ function App() {
   // Debounced connection status for the UI indicator (MH-026)
   const { displayStatus, showRestoredToast, lastConnectedStr, nextRetryStr } =
     useConnectionStatus({ status, retryAt, lastConnectedAt });
+
+  // Message history — loads historical messages from REST API when entering a room.
+  const {
+    historyMessages,
+    hasMore: historyHasMore,
+    isLoadingMore: historyLoading,
+    loadInitial,
+    loadMore,
+    clearHistory,
+  } = useMessageHistory();
+
+  // De-duplicate: WS messages that are already in history (by ID) are suppressed.
+  const historyIdSet = new Set(historyMessages.map((m) => m.id));
+  const liveMessages = messages.filter((m) => !historyIdSet.has(m.id));
+
+  // Combined message list: history (oldest first) + live WS messages.
+  const allMessages: RoomMessage[] = [...historyMessages, ...liveMessages];
 
   // Fetch rooms from backend API on mount
   useEffect(() => {
@@ -255,11 +272,14 @@ function App() {
   useEffect(() => {
     if (pathRoomId === selectedRoomId) return;
 
-    if (selectedRoomId && chatScrollRef.current) {
-      scrollPositions.current.set(selectedRoomId, chatScrollRef.current.scrollTop);
+    if (selectedRoomId) {
+      // Scroll position is managed by ChatTimeline's internal ref.
+      // Clear the outgoing room's entry so it doesn't accumulate stale data.
+      scrollPositions.current.delete(selectedRoomId);
     }
 
     clearMessages();
+    if (selectedRoomId) clearHistory(selectedRoomId);
     setSelectedRoomId(pathRoomId);
     setShowSettings(false);
 
@@ -267,15 +287,11 @@ function App() {
       setRooms((prev) =>
         prev.map((r) => (r.id === pathRoomId ? { ...r, unreadCount: 0 } : r))
       );
+      // Load initial message history for the newly selected room.
+      void loadInitial(pathRoomId);
     }
-  }, [pathRoomId, selectedRoomId, clearMessages]);
+  }, [pathRoomId, selectedRoomId, clearMessages, clearHistory, loadInitial]);
 
-  // Restore scroll position when a room becomes active.
-  useEffect(() => {
-    if (!selectedRoomId || !chatScrollRef.current) return;
-    const saved = scrollPositions.current.get(selectedRoomId);
-    chatScrollRef.current.scrollTop = saved ?? chatScrollRef.current.scrollHeight;
-  }, [selectedRoomId]);
 
   /** Navigate to /rooms/:roomId — the URL-sync effect will update selectedRoomId. */
   const handleSelectRoom = useCallback(
@@ -562,13 +578,13 @@ function App() {
                 </div>
               </div>
               {/* Chat timeline */}
-              <div
-                ref={chatScrollRef}
-                className="flex-1 overflow-y-auto"
-                data-testid="chat-timeline"
-              >
-                <ChatTimeline messages={messages} currentUser="hive-user" />
-              </div>
+              <ChatTimeline
+                messages={allMessages}
+                currentUser={getUserFromToken()?.username ?? "hive-user"}
+                onLoadMore={() => void loadMore(selectedRoomId)}
+                isLoadingMore={historyLoading}
+                atBeginning={!historyHasMore && historyMessages.length > 0}
+              />
               {/* Message input */}
               <MessageInput
                 onSend={handleSend}
