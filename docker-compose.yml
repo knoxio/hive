@@ -4,6 +4,7 @@ services:
     image: rust:1-slim
     command: >
       sh -c "
+        apt-get update -qq && apt-get install -y -qq curl &&
         cargo install room-cli --version 3.5.1 &&
         room daemon --ws-port 4200
       "
@@ -13,6 +14,12 @@ services:
       - "4200"
     networks:
       - hive-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4200/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
 
   # Hive backend — axum server proxying to room daemon
   hive-server:
@@ -22,15 +29,25 @@ services:
       dockerfile: crates/hive-server/Dockerfile
     environment:
       RUST_LOG: hive=info
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - hive-data:/app/data
       - ./hive.toml.example:/app/hive.toml:ro
     ports:
-      - "3000:3000"
+      - "${HIVE_PORT:-3000}:3000"
     depends_on:
-      - room-daemon
+      room-daemon:
+        condition: service_healthy
     networks:
       - hive-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Hive frontend — React web dashboard
   hive-web:
@@ -39,11 +56,18 @@ services:
       context: hive-web
       dockerfile: Dockerfile
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8080}:80"
     depends_on:
-      - hive-server
+      hive-server:
+        condition: service_healthy
     networks:
       - hive-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   room-data:
