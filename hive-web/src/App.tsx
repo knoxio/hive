@@ -584,6 +584,7 @@ function App() {
                 onLoadMore={() => void loadMore(selectedRoomId)}
                 isLoadingMore={historyLoading}
                 atBeginning={!historyHasMore && historyMessages.length > 0}
+                roomId={selectedRoomId ?? undefined}
               />
               {/* Message input */}
               <MessageInput
