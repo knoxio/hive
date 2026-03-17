@@ -979,4 +979,186 @@ mod tests {
         let alice = members.iter().find(|(u, _)| u == "alice").unwrap();
         assert_eq!(alice.1, "admin");
     }
+
+    // -----------------------------------------------------------------------
+    // Handler-level tests (axum::Router::oneshot)
+    // -----------------------------------------------------------------------
+
+    use axum::body::{to_bytes, Body};
+    use axum::routing::post;
+    use axum::Extension;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    fn make_test_state() -> std::sync::Arc<crate::AppState> {
+        std::sync::Arc::new(crate::AppState {
+            config: crate::config::HiveConfig::default(),
+            db: crate::db::Database::open_memory().unwrap(),
+            jwt_secret: b"test-secret-must-be-long-enough-for-hmac".to_vec(),
+            jwt_ttl: 3600,
+            start_time: std::time::Instant::now(),
+        })
+    }
+
+    fn make_test_claims(sub: &str, role: &str) -> crate::auth::Claims {
+        crate::auth::Claims {
+            sub: sub.into(),
+            username: "testuser".into(),
+            role: role.into(),
+            jti: uuid::Uuid::new_v4().to_string(),
+            iat: 0,
+            exp: u64::MAX,
+        }
+    }
+
+    #[tokio::test]
+    async fn handler_join_room_existing_room_returns_ok() {
+        let state = make_test_state();
+        seed_room(&state.db, "test-room");
+        let claims = make_test_claims("1", "user");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}/join", post(join_room))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/rooms/test-room/join")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["room_id"], "test-room");
+        assert_eq!(json["joined"], true);
+    }
+
+    #[tokio::test]
+    async fn handler_join_room_missing_room_returns_not_found() {
+        let state = make_test_state();
+        let claims = make_test_claims("1", "user");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}/join", post(join_room))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/rooms/nonexistent/join")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn handler_leave_room_existing_room_returns_no_content() {
+        let state = make_test_state();
+        seed_room(&state.db, "test-room");
+        let claims = make_test_claims("1", "user");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}/leave", post(leave_room))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/rooms/test-room/leave")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn handler_leave_room_missing_room_returns_not_found() {
+        let state = make_test_state();
+        let claims = make_test_claims("1", "user");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}/leave", post(leave_room))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/rooms/ghost/leave")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn handler_patch_room_sets_display_name() {
+        let state = make_test_state();
+        seed_room(&state.db, "my-room");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
+            .with_state(std::sync::Arc::clone(&state));
+        let payload = serde_json::to_vec(&serde_json::json!({"name": "MyRoom"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri("/api/rooms/my-room")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["display_name"], "MyRoom");
+        assert_eq!(json["id"], "my-room");
+    }
+
+    #[tokio::test]
+    async fn handler_patch_room_missing_room_returns_not_found() {
+        let state = make_test_state();
+        let app = Router::new()
+            .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
+            .with_state(std::sync::Arc::clone(&state));
+        let payload = serde_json::to_vec(&serde_json::json!({"name": "NewName"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri("/api/rooms/does-not-exist")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn handler_patch_room_invalid_name_returns_bad_request() {
+        let state = make_test_state();
+        seed_room(&state.db, "my-room");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
+            .with_state(std::sync::Arc::clone(&state));
+        let payload = serde_json::to_vec(&serde_json::json!({"name": "has spaces"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri("/api/rooms/my-room")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn handler_patch_room_name_conflict_returns_conflict() {
+        let state = make_test_state();
+        seed_room(&state.db, "room-a");
+        seed_room(&state.db, "room-b");
+        let app = Router::new()
+            .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
+            .with_state(std::sync::Arc::clone(&state));
+        // Attempt to set display_name of room-a to "room-b" — conflicts with existing room_id.
+        let payload = serde_json::to_vec(&serde_json::json!({"name": "room-b"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri("/api/rooms/room-a")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
 }
