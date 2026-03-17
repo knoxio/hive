@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
 import { CreateRoomModal } from "./components/CreateRoomModal";
@@ -52,8 +52,12 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Derive active tab from URL path
-  const pathTab = location.pathname.split("/")[1] as Tab;
+  // Derive active tab and room ID from URL path
+  // e.g. /rooms/my-room → pathTab="rooms", pathRoomId="my-room"
+  const pathSegments = location.pathname.split("/");
+  const pathTab = pathSegments[1] as Tab;
+  const pathRoomId: string | null =
+    pathSegments[1] === "rooms" && pathSegments[2] ? pathSegments[2] : null;
   const isRootPath = location.pathname === "/" || location.pathname === "";
   const isKnownTab = TABS.includes(pathTab);
   const activeTab: Tab = isKnownTab ? pathTab : "rooms";
@@ -67,6 +71,11 @@ function App() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showDeleteRoom, setShowDeleteRoom] = useState(false);
+
+  /** Per-room scroll positions — preserved across room switches. */
+  const scrollPositions = useRef<Map<string, number>>(new Map());
+  /** Ref to the chat timeline scroll container. */
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   /** Invalidate the server-side token and clear local auth state. */
   const handleLogout = useCallback(async () => {
@@ -148,35 +157,61 @@ function App() {
     return Array.from(seen.values());
   })();
 
-  // Handle room selection
+  // Sync selectedRoomId from URL path — the URL is the source of truth for room selection.
+  // Saves the scroll position of the outgoing room, clears messages, then activates the new room.
+  useEffect(() => {
+    if (pathRoomId === selectedRoomId) return;
+
+    if (selectedRoomId && chatScrollRef.current) {
+      scrollPositions.current.set(selectedRoomId, chatScrollRef.current.scrollTop);
+    }
+
+    clearMessages();
+    setSelectedRoomId(pathRoomId);
+
+    if (pathRoomId) {
+      setRooms((prev) =>
+        prev.map((r) => (r.id === pathRoomId ? { ...r, unreadCount: 0 } : r))
+      );
+    }
+  }, [pathRoomId, selectedRoomId, clearMessages]);
+
+  // Restore scroll position when a room becomes active.
+  useEffect(() => {
+    if (!selectedRoomId || !chatScrollRef.current) return;
+    const saved = scrollPositions.current.get(selectedRoomId);
+    chatScrollRef.current.scrollTop = saved ?? chatScrollRef.current.scrollHeight;
+  }, [selectedRoomId]);
+
+  /** Navigate to /rooms/:roomId — the URL-sync effect will update selectedRoomId. */
   const handleSelectRoom = useCallback(
     (roomId: string) => {
       if (roomId !== selectedRoomId) {
-        clearMessages();
-        setSelectedRoomId(roomId);
+        navigate(`/rooms/${roomId}`);
       }
     },
-    [selectedRoomId, clearMessages]
+    [selectedRoomId, navigate]
   );
 
-  /** Called after a room is successfully created: add it to the list and select it. */
-  const handleRoomCreated = useCallback((roomId: string) => {
-    setRooms((prev) => {
-      if (prev.some((r) => r.id === roomId)) return prev;
-      return [{ id: roomId, name: roomId, unreadCount: 0 }, ...prev];
-    });
-    clearMessages();
-    setSelectedRoomId(roomId);
-    setShowCreateRoom(false);
-  }, [clearMessages]);
+  /** Called after a room is successfully created: add it to the list and navigate to it. */
+  const handleRoomCreated = useCallback(
+    (roomId: string) => {
+      setRooms((prev) => {
+        if (prev.some((r) => r.id === roomId)) return prev;
+        return [{ id: roomId, name: roomId, unreadCount: 0 }, ...prev];
+      });
+      navigate(`/rooms/${roomId}`);
+      setShowCreateRoom(false);
+    },
+    [navigate]
+  );
 
-  /** Called after a room is successfully deleted: remove it from the list and deselect. */
+  /** Called after a room is successfully deleted: remove it from the list and navigate away. */
   const handleRoomDeleted = useCallback(() => {
     setRooms((prev) => prev.filter((r) => r.id !== selectedRoomId));
-    clearMessages();
-    setSelectedRoomId(null);
+    navigate("/rooms");
     setShowDeleteRoom(false);
-  }, [selectedRoomId, clearMessages]);
+  }, [selectedRoomId, navigate]);
 
   // Handle sending messages
   const handleSend = useCallback(
@@ -319,7 +354,11 @@ function App() {
                 </button>
               </div>
               {/* Chat timeline */}
-              <div className="flex-1 overflow-y-auto" data-testid="chat-timeline">
+              <div
+                ref={chatScrollRef}
+                className="flex-1 overflow-y-auto"
+                data-testid="chat-timeline"
+              >
                 <ChatTimeline messages={messages} currentUser="hive-user" />
               </div>
               {/* Message input */}
