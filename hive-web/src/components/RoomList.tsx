@@ -6,6 +6,8 @@ interface Room {
   id: string;
   name: string;
   unreadCount: number;
+  display_name?: string | null;
+  description?: string | null;
 }
 
 interface RoomListProps {

@@ -154,7 +154,9 @@ async fn main() {
         )
         .route(
             "/api/rooms/{room_id}",
-            get(rest_proxy::get_room).delete(rooms::delete_room),
+            get(rest_proxy::get_room)
+                .patch(rooms::patch_room)
+                .delete(rooms::delete_room),
         )
         .route(
             "/api/rooms/{room_id}/messages",
