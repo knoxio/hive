@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
+    middleware,
     routing::{get, post},
     Json, Router,
 };
@@ -19,9 +20,10 @@ use tower_http::cors::{Any, CorsLayer};
 
 /// Shared application state.
 pub struct AppState {
-    config: HiveConfig,
-    #[allow(dead_code)]
-    db: db::Database,
+    pub(crate) config: HiveConfig,
+    pub(crate) db: db::Database,
+    pub(crate) jwt_secret: Vec<u8>,
+    pub(crate) jwt_ttl: u64,
     start_time: std::time::Instant,
 }
 
@@ -69,6 +71,10 @@ async fn main() {
         )
         .init();
 
+    // JWT secret — must be set and ≥ 32 bytes before anything else starts.
+    let jwt_secret = auth::load_jwt_secret();
+    let jwt_ttl = auth::jwt_ttl_secs();
+
     // Config
     let config_path = std::env::args()
         .nth(1)
@@ -91,9 +97,12 @@ async fn main() {
     let db = db::Database::open(&db_path).expect("failed to open database");
     tracing::info!("database opened at {}", db_path.display());
 
-    // Seed default settings (no-op if already seeded)
+    // Seed default settings (no-op if already seeded).
     let daemon_url = settings::resolve_daemon_url(&config.daemon.ws_url);
     settings::seed_defaults(&db, &daemon_url);
+
+    // Seed admin user from env vars (idempotent).
+    auth::seed_admin_user(&db);
 
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("hive-server starting on {bind_addr}");
@@ -101,12 +110,18 @@ async fn main() {
     let state = Arc::new(AppState {
         config,
         db,
+        jwt_secret,
+        jwt_ttl,
         start_time: std::time::Instant::now(),
     });
 
-    let app = Router::new()
+    // Public routes — no auth required.
+    let public_routes = Router::new()
         .route("/api/health", get(health))
-        .route("/api/auth/token", post(auth::issue_token))
+        .route("/api/auth/login", post(auth::login));
+
+    // Protected routes — require valid Bearer JWT.
+    let protected_routes = Router::new()
         .route("/api/rooms", get(rest_proxy::list_rooms))
         .route("/api/rooms/{room_id}", get(rest_proxy::get_room))
         .route(
@@ -119,6 +134,14 @@ async fn main() {
             get(settings::get_settings).patch(settings::patch_settings),
         )
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            auth::auth_middleware,
+        ));
+
+    let app = Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
         .with_state(state)
         .layer(
             CorsLayer::new()
