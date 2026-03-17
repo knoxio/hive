@@ -71,7 +71,7 @@ jobs:
       - name: Start hive-server
         run: |
           mkdir -p /tmp/hive-data
-          HIVE_JWT_SECRET=ci-test-secret \
+          HIVE_JWT_SECRET=ci-test-secret-for-playwright-e2e-tests-only \
           HIVE_ADMIN_USER=admin \
           HIVE_ADMIN_PASSWORD=admin-password \
           HIVE_DATA_DIR=/tmp/hive-data \
