@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from '../lib/apiError';
+import { authHeader } from '../lib/auth';
 import { EmptyState } from './EmptyState';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -6,13 +8,22 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 /** Agent data from the /api/agents endpoint. */
 export interface Agent {
   username: string;
-  personality: string;
-  model: string;
-  pid: number;
+  /** Health of the agent as reported by the daemon. */
   health: 'healthy' | 'warning' | 'stale' | 'exited';
+  /** Model name — may be empty if not tracked by the daemon. */
+  model?: string;
+  /** Personality label — may be empty if not tracked by the daemon. */
+  personality?: string;
+  /** PID — may be 0 if not tracked by the daemon. */
+  pid?: number;
   status?: string;
   uptime?: string;
   spawned_at?: string;
+}
+
+/** Response envelope from GET /api/agents. */
+interface AgentsResponse {
+  agents: Agent[];
 }
 
 /** Health status indicator with color coding. */
@@ -42,20 +53,26 @@ function AgentCard({ agent }: { agent: Agent }) {
         <span className="text-lg">🤖</span>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-gray-100 truncate">{agent.username}</div>
-          <div className="text-xs text-gray-400">{agent.personality}</div>
+          {agent.personality && (
+            <div className="text-xs text-gray-400">{agent.personality}</div>
+          )}
         </div>
         <HealthDot health={agent.health} />
       </div>
 
       <div className="space-y-1 text-xs text-gray-400">
-        <div className="flex justify-between">
-          <span>Model</span>
-          <span className="text-gray-300">{agent.model}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>PID</span>
-          <span className="text-gray-300">{agent.pid}</span>
-        </div>
+        {agent.model && (
+          <div className="flex justify-between">
+            <span>Model</span>
+            <span className="text-gray-300">{agent.model}</span>
+          </div>
+        )}
+        {typeof agent.pid === 'number' && agent.pid > 0 && (
+          <div className="flex justify-between">
+            <span>PID</span>
+            <span className="text-gray-300">{agent.pid}</span>
+          </div>
+        )}
         {agent.uptime && (
           <div className="flex justify-between">
             <span>Uptime</span>
@@ -81,17 +98,11 @@ export function AgentGrid() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/agents`);
-      if (res.ok) {
-        const data = await res.json();
-        setAgents(data.agents || data || []);
-        setError(null);
-      } else if (res.status === 501) {
-        setAgents([]);
-        setError('Agent management not yet implemented');
-      } else {
-        setError(`Failed to fetch agents: ${res.status}`);
-      }
+      const data = await apiFetch<AgentsResponse>(`${API_BASE}/api/agents`, {
+        headers: authHeader(),
+      });
+      setAgents(data.agents ?? []);
+      setError(null);
     } catch {
       setAgents([]);
       setError('Cannot connect to hive-server');

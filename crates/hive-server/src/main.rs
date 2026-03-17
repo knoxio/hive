@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod agents;
 pub mod auth;
 mod config;
 pub mod daemon;
@@ -157,6 +158,7 @@ async fn main() {
             get(settings::get_settings).patch(settings::patch_settings),
         )
         .route("/api/settings/history", get(settings::get_settings_history))
+        .route("/api/agents", get(agents::list_agents))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
