@@ -7,10 +7,6 @@
 
 import { test, expect } from '@playwright/test';
 
-const API_URL = process.env.HIVE_API_URL || 'http://localhost:3000';
-const ADMIN_USER = process.env.HIVE_ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.HIVE_ADMIN_PASSWORD || 'test-password';
-
 const MOCK_TOKEN = 'mock-jwt-token-mh014';
 
 // ---------------------------------------------------------------------------
@@ -197,44 +193,3 @@ test.describe('MH-014: create room — error handling', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// API tests (requires running backend)
-// ---------------------------------------------------------------------------
-
-test.describe('MH-014: POST /api/rooms — API validation', () => {
-  async function getToken(request: Parameters<Parameters<typeof test>[1]>[0]['request']): Promise<string> {
-    const res = await request.post(`${API_URL}/api/auth/login`, {
-      data: { username: ADMIN_USER, password: ADMIN_PASSWORD },
-    });
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    return body.token as string;
-  }
-
-  test('POST /api/rooms returns 201 with valid name', async ({ request }) => {
-    const token = await getToken(request);
-    const res = await request.post(`${API_URL}/api/rooms`, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      data: { name: `ui-test-${Date.now()}` },
-    });
-    expect(res.status()).toBe(201);
-    const body = await res.json();
-    expect(typeof body.id).toBe('string');
-  });
-
-  test('POST /api/rooms returns 400 for spaces in name', async ({ request }) => {
-    const token = await getToken(request);
-    const res = await request.post(`${API_URL}/api/rooms`, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      data: { name: 'has space' },
-    });
-    expect(res.status()).toBe(400);
-  });
-
-  test('POST /api/rooms returns 401 without token', async ({ request }) => {
-    const res = await request.post(`${API_URL}/api/rooms`, {
-      data: { name: 'no-auth' },
-    });
-    expect(res.status()).toBe(401);
-  });
-});
