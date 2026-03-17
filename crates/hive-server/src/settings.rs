@@ -1,24 +1,53 @@
 //! App settings API — runtime configuration stored in the database.
 //!
-//! Exposes `GET /api/settings` and `PATCH /api/settings` to read and update
-//! key/value settings. The `daemon_url` setting controls which room daemon
-//! all subsequent proxy calls target.
+//! Exposes `GET /api/settings`, `PATCH /api/settings`, and
+//! `GET /api/settings/history` to read, update, and audit key/value settings.
+//! The `daemon_url` setting controls which room daemon all proxy calls target.
 //!
 //! On first run, seeds defaults from environment variables (see [`seed_defaults`]).
+//!
+//! Every `PATCH` call is audited in `app_settings_history`. The `daemon_url`
+//! key is validated for URL scheme before writing — MH-029.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
+use crate::db::SettingHistoryRow;
 use crate::AppState;
 
 /// Known setting keys.
 pub const KEY_DAEMON_URL: &str = "daemon_url";
+
+/// Valid URL schemes for the daemon URL setting.
+const VALID_DAEMON_URL_SCHEMES: &[&str] = &["ws", "wss", "http", "https"];
+
+// ---------------------------------------------------------------------------
+// URL validation
+// ---------------------------------------------------------------------------
+
+/// Validate a daemon URL: must parse as a URL and use an accepted scheme.
+fn validate_daemon_url(raw: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(raw).map_err(|_| format!("invalid URL: {raw}"))?;
+
+    if !VALID_DAEMON_URL_SCHEMES.contains(&parsed.scheme()) {
+        return Err(format!(
+            "invalid scheme '{}': must be one of ws, wss, http, https",
+            parsed.scheme()
+        ));
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
 
 /// GET /api/settings — returns all settings as a JSON object.
 pub async fn get_settings(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -51,6 +80,10 @@ pub struct PatchSettingsRequest(HashMap<String, String>);
 ///
 /// Unknown keys are accepted (open key/value store). An empty patch body
 /// returns 400 — use explicit keys.
+///
+/// The `daemon_url` key is validated for URL scheme. Every write is audited in
+/// `app_settings_history`. The `changed_by` field is `"system"` until auth
+/// middleware provides user identity.
 pub async fn patch_settings(
     State(state): State<Arc<AppState>>,
     Json(PatchSettingsRequest(updates)): Json<PatchSettingsRequest>,
@@ -63,45 +96,117 @@ pub async fn patch_settings(
             .into_response();
     }
 
-    let result = state.db.with_conn(|conn| {
-        for (key, value) in &updates {
-            conn.execute(
-                "INSERT INTO app_settings (key, value, updated_at) \
-                 VALUES (?1, ?2, datetime('now')) \
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                rusqlite::params![key, value],
-            )?;
+    // Validate before writing anything.
+    if let Some(url) = updates.get(KEY_DAEMON_URL) {
+        if let Err(msg) = validate_daemon_url(url) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response();
         }
-        Ok(())
+    }
+
+    // Write all keys with audit logging.
+    for (key, value) in &updates {
+        if let Err(e) = state.db.set_setting(key, value, "system") {
+            tracing::error!("failed to update setting '{key}': {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response();
+        }
+        if key == KEY_DAEMON_URL {
+            tracing::info!(daemon_url = %value, "settings_changed: daemon_url updated");
+        }
+    }
+
+    // Return updated settings.
+    let settings_result = state.db.with_conn(|conn| {
+        let mut stmt = conn.prepare("SELECT key, value FROM app_settings ORDER BY key")?;
+        let pairs = stmt
+            .query_map([], |row| {
+                let k: String = row.get(0)?;
+                let v: String = row.get(1)?;
+                Ok((k, v))
+            })?
+            .collect::<Result<HashMap<String, String>, _>>()?;
+        Ok(pairs)
     });
 
-    match result {
-        Ok(()) => {
-            let settings_result = state.db.with_conn(|conn| {
-                let mut stmt = conn.prepare("SELECT key, value FROM app_settings ORDER BY key")?;
-                let pairs = stmt
-                    .query_map([], |row| {
-                        let k: String = row.get(0)?;
-                        let v: String = row.get(1)?;
-                        Ok((k, v))
-                    })?
-                    .collect::<Result<HashMap<String, String>, _>>()?;
-                Ok(pairs)
-            });
-            match settings_result {
-                Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
-                Err(e) => {
-                    tracing::error!("failed to read settings after patch: {e}");
-                    (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
-                }
-            }
-        }
+    match settings_result {
+        Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
         Err(e) => {
-            tracing::error!("failed to update settings: {e}");
+            tracing::error!("failed to read settings after patch: {e}");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
         }
     }
 }
+
+/// Query parameters for `GET /api/settings/history`.
+#[derive(Debug, Deserialize)]
+pub struct HistoryQuery {
+    pub key: Option<String>,
+    pub limit: Option<i64>,
+}
+
+/// A single entry in the settings change log.
+#[derive(Debug, Serialize)]
+pub struct SettingHistoryItem {
+    pub id: i64,
+    pub key: String,
+    pub old_value: Option<String>,
+    pub new_value: String,
+    pub changed_by: String,
+    pub changed_at: String,
+}
+
+impl From<SettingHistoryRow> for SettingHistoryItem {
+    fn from(r: SettingHistoryRow) -> Self {
+        Self {
+            id: r.id,
+            key: r.key,
+            old_value: r.old_value,
+            new_value: r.new_value,
+            changed_by: r.changed_by,
+            changed_at: r.changed_at,
+        }
+    }
+}
+
+/// GET /api/settings/history — return the change log for a settings key.
+///
+/// Query params:
+/// - `key` (default: `daemon_url`)
+/// - `limit` (default: 5, max: 100)
+pub async fn get_settings_history(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HistoryQuery>,
+) -> impl IntoResponse {
+    let key = params.key.unwrap_or_else(|| KEY_DAEMON_URL.to_owned());
+    let limit = params.limit.unwrap_or(5).clamp(1, 100);
+
+    let db = state.db.clone();
+    match tokio::task::spawn_blocking(move || db.get_setting_history(&key, limit)).await {
+        Ok(Ok(rows)) => {
+            let items: Vec<SettingHistoryItem> = rows.into_iter().map(Into::into).collect();
+            (StatusCode::OK, Json(items)).into_response()
+        }
+        Ok(Err(e)) => {
+            tracing::error!("failed to read settings history: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+        }
+        Err(e) => {
+            tracing::error!("spawn_blocking panicked: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Seed helpers
+// ---------------------------------------------------------------------------
 
 /// Seed default settings on first run.
 ///
@@ -126,6 +231,10 @@ pub fn seed_defaults(db: &crate::db::Database, daemon_url: &str) {
 pub fn resolve_daemon_url(config_ws_url: &str) -> String {
     std::env::var("HIVE_DAEMON_URL").unwrap_or_else(|_| config_ws_url.to_owned())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -245,5 +354,38 @@ mod tests {
             let result = resolve_daemon_url("ws://config-value:4200");
             assert_eq!(result, "ws://config-value:4200");
         }
+    }
+
+    #[test]
+    fn valid_daemon_url_accepted() {
+        assert!(validate_daemon_url("ws://127.0.0.1:4200").is_ok());
+        assert!(validate_daemon_url("wss://daemon.example.com").is_ok());
+        assert!(validate_daemon_url("http://localhost:4200").is_ok());
+        assert!(validate_daemon_url("https://daemon.example.com/api").is_ok());
+    }
+
+    #[test]
+    fn invalid_daemon_url_rejected() {
+        assert!(validate_daemon_url("").is_err());
+        assert!(validate_daemon_url("localhost:4200").is_err());
+        assert!(validate_daemon_url("ftp://example.com").is_err());
+        assert!(validate_daemon_url("tcp://127.0.0.1:4200").is_err());
+    }
+
+    #[test]
+    fn set_setting_writes_audit_history() {
+        let db = test_db();
+        db.set_setting("daemon_url", "ws://first:4200", "system")
+            .unwrap();
+        db.set_setting("daemon_url", "ws://second:4200", "admin")
+            .unwrap();
+
+        let history = db.get_setting_history("daemon_url", 10).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].new_value, "ws://second:4200");
+        assert_eq!(history[0].old_value.as_deref(), Some("ws://first:4200"));
+        assert_eq!(history[0].changed_by, "admin");
+        assert_eq!(history[1].new_value, "ws://first:4200");
+        assert!(history[1].old_value.is_none());
     }
 }
