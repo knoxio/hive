@@ -14,4 +14,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - JoinRoomModal — browse all workspace rooms and join/leave from a modal dialog (MH-019)
 - Sidebar now shows only joined rooms; joined state persisted to localStorage (MH-019)
 - "Leave" button in room header for quick leave of the current room (MH-019)
+- `useWebSocket` reconnects on room switch — `url` added to auto-connect effect deps so navigating between rooms tears down the old WebSocket and opens a new one (MH-027)
 
