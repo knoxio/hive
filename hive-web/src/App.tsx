@@ -12,7 +12,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
-import { authHeader, clearToken, getUserFromToken } from "./lib/auth";
+import { authHeader, clearToken, getToken, getUserFromToken } from "./lib/auth";
 
 type Tab = "rooms" | "agents" | "tasks" | "costs";
 
@@ -84,8 +84,12 @@ function App() {
     }
   }, [navigate]);
 
-  // WebSocket connection to the selected room
-  const wsUrl = selectedRoomId ? `${WS_BASE}/ws/${selectedRoomId}` : "";
+  // WebSocket connection to the selected room.
+  // The JWT is passed as ?token= because the browser WebSocket API cannot
+  // set the Authorization header during the upgrade handshake.
+  const wsUrl = selectedRoomId
+    ? `${WS_BASE}/ws/${selectedRoomId}?token=${encodeURIComponent(getToken() ?? "")}`
+    : "";
   const { status, messages, sendMessage, clearMessages } = useWebSocket({
     url: wsUrl,
     autoConnect: !!selectedRoomId,
