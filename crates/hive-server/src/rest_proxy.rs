@@ -41,40 +41,6 @@ fn build_request(
     req
 }
 
-/// GET /api/rooms — list available rooms from the daemon.
-pub async fn list_rooms(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, StatusCode> {
-    let base = daemon_base(&state);
-    let client = reqwest::Client::new();
-
-    // Try daemon health endpoint to discover rooms
-    let health_url = format!("{base}/api/health");
-    match build_request(&client, reqwest::Method::GET, &health_url, &headers)
-        .send()
-        .await
-    {
-        Ok(resp) => {
-            let body: Value = resp.json().await.unwrap_or_default();
-            let room = body
-                .get("room")
-                .and_then(|r| r.as_str())
-                .unwrap_or("default");
-            let users = body.get("users").and_then(|u| u.as_u64()).unwrap_or(0);
-            Ok(Json(serde_json::json!({
-                "rooms": [{ "id": room, "name": room, "users": users }],
-                "daemon_connected": true
-            })))
-        }
-        Err(_) => Ok(Json(serde_json::json!({
-            "rooms": [],
-            "daemon_connected": false,
-            "error": "daemon unavailable"
-        }))),
-    }
-}
-
 /// GET /api/rooms/:room_id — get room info.
 pub async fn get_room(
     State(state): State<Arc<AppState>>,
