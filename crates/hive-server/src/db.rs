@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 /// Schema version — bump when adding new migrations.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 /// SQL statements for schema v1.
 const SCHEMA_V1: &str = r#"
@@ -87,6 +87,29 @@ CREATE TABLE IF NOT EXISTS revoked_tokens (
 );
 "#;
 
+/// SQL statements for schema v4 — settings change history.
+const SCHEMA_V4: &str = r#"
+CREATE TABLE IF NOT EXISTS app_settings_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    key        TEXT NOT NULL,
+    old_value  TEXT,
+    new_value  TEXT NOT NULL,
+    changed_by TEXT NOT NULL DEFAULT 'system',
+    changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
+/// A row from `app_settings_history`.
+#[derive(Debug, Clone)]
+pub struct SettingHistoryRow {
+    pub id: i64,
+    pub key: String,
+    pub old_value: Option<String>,
+    pub new_value: String,
+    pub changed_by: String,
+    pub changed_at: String,
+}
+
 /// Thread-safe database handle.
 ///
 /// Uses a `Mutex<Connection>` for synchronous SQLite access from async
@@ -160,6 +183,12 @@ impl Database {
             tracing::info!("database migrated to schema v3");
         }
 
+        if current < 4 {
+            conn.execute_batch(SCHEMA_V4)?;
+            conn.execute("INSERT INTO _migrations (version) VALUES (4)", [])?;
+            tracing::info!("database migrated to schema v4");
+        }
+
         let final_version: i64 = conn.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM _migrations",
             [],
@@ -179,6 +208,90 @@ impl Database {
     {
         let conn = self.conn.lock().expect("db lock poisoned");
         f(&conn)
+    }
+
+    /// Return the current value for `key`, or `None` if not set.
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>, rusqlite::Error> {
+        self.with_conn(|conn| {
+            match conn.query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                [key],
+                |row| row.get(0),
+            ) {
+                Ok(v) => Ok(Some(v)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(e) => Err(e),
+            }
+        })
+    }
+
+    /// Upsert a setting value, update `updated_by`, and record the change in
+    /// `app_settings_history`.
+    ///
+    /// `changed_by` should be a username or `"system"` for automatic changes.
+    pub fn set_setting(
+        &self,
+        key: &str,
+        value: &str,
+        changed_by: &str,
+    ) -> Result<(), rusqlite::Error> {
+        self.with_conn(|conn| {
+            let old_value: Option<String> = match conn.query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                [key],
+                |row| row.get(0),
+            ) {
+                Ok(v) => Some(v),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => return Err(e),
+            };
+
+            conn.execute(
+                "INSERT INTO app_settings (key, value, updated_at, updated_by) \
+                 VALUES (?1, ?2, datetime('now'), ?3) \
+                 ON CONFLICT(key) DO UPDATE SET \
+                     value = excluded.value, \
+                     updated_at = excluded.updated_at, \
+                     updated_by = excluded.updated_by",
+                rusqlite::params![key, value, changed_by],
+            )?;
+
+            conn.execute(
+                "INSERT INTO app_settings_history (key, old_value, new_value, changed_by) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![key, old_value, value, changed_by],
+            )?;
+
+            Ok(())
+        })
+    }
+
+    /// Return the last `limit` history entries for `key`, newest first.
+    pub fn get_setting_history(
+        &self,
+        key: &str,
+        limit: i64,
+    ) -> Result<Vec<SettingHistoryRow>, rusqlite::Error> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, key, old_value, new_value, changed_by, changed_at \
+                 FROM app_settings_history \
+                 WHERE key = ?1 \
+                 ORDER BY changed_at DESC, id DESC \
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![key, limit], |row| {
+                Ok(SettingHistoryRow {
+                    id: row.get(0)?,
+                    key: row.get(1)?,
+                    old_value: row.get(2)?,
+                    new_value: row.get(3)?,
+                    changed_by: row.get(4)?,
+                    changed_at: row.get(5)?,
+                })
+            })?;
+            rows.collect()
+        })
     }
 }
 
@@ -201,6 +314,7 @@ mod tests {
             assert!(names.contains(&"api_keys".to_owned()));
             assert!(names.contains(&"team_manifests".to_owned()));
             assert!(names.contains(&"app_settings".to_owned()));
+            assert!(names.contains(&"app_settings_history".to_owned()));
             assert!(names.contains(&"local_users".to_owned()));
             assert!(names.contains(&"revoked_tokens".to_owned()));
             assert!(names.contains(&"_migrations".to_owned()));
@@ -371,5 +485,48 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    #[test]
+    fn setting_set_and_get() {
+        let db = Database::open_memory().unwrap();
+        assert!(db.get_setting("daemon_url").unwrap().is_none());
+
+        db.set_setting("daemon_url", "ws://first:4200", "system")
+            .unwrap();
+        assert_eq!(
+            db.get_setting("daemon_url").unwrap().as_deref(),
+            Some("ws://first:4200")
+        );
+
+        db.set_setting("daemon_url", "ws://second:4200", "admin")
+            .unwrap();
+        assert_eq!(
+            db.get_setting("daemon_url").unwrap().as_deref(),
+            Some("ws://second:4200")
+        );
+
+        let history = db.get_setting_history("daemon_url", 10).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].new_value, "ws://second:4200");
+        assert_eq!(history[0].changed_by, "admin");
+    }
+
+    #[test]
+    fn setting_history_limit_respected() {
+        let db = Database::open_memory().unwrap();
+        for i in 0..10 {
+            db.set_setting("daemon_url", &format!("ws://host:{}", 4200 + i), "system")
+                .unwrap();
+        }
+        let history = db.get_setting_history("daemon_url", 5).unwrap();
+        assert_eq!(history.len(), 5);
+    }
+
+    #[test]
+    fn setting_history_unknown_key_empty() {
+        let db = Database::open_memory().unwrap();
+        let history = db.get_setting_history("nonexistent", 10).unwrap();
+        assert!(history.is_empty());
     }
 }

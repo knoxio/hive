@@ -133,6 +133,7 @@ async fn main() {
             "/api/settings",
             get(settings::get_settings).patch(settings::patch_settings),
         )
+        .route("/api/settings/history", get(settings::get_settings_history))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
