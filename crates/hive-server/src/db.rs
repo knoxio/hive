@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 /// Schema version — bump when adding new migrations.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 /// SQL statements for schema v1.
 const SCHEMA_V1: &str = r#"
@@ -56,6 +56,16 @@ CREATE TABLE IF NOT EXISTS team_manifests (
     manifest_json TEXT NOT NULL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
+/// SQL statements for schema v2 — app settings key/value store.
+const SCHEMA_V2: &str = r#"
+CREATE TABLE IF NOT EXISTS app_settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by  TEXT
 );
 "#;
 
@@ -120,6 +130,12 @@ impl Database {
             tracing::info!("database migrated to schema v1");
         }
 
+        if current < 2 {
+            conn.execute_batch(SCHEMA_V2)?;
+            conn.execute("INSERT INTO _migrations (version) VALUES (2)", [])?;
+            tracing::info!("database migrated to schema v2");
+        }
+
         let final_version: i64 = conn.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM _migrations",
             [],
@@ -160,6 +176,7 @@ mod tests {
             assert!(names.contains(&"workspace_rooms".to_owned()));
             assert!(names.contains(&"api_keys".to_owned()));
             assert!(names.contains(&"team_manifests".to_owned()));
+            assert!(names.contains(&"app_settings".to_owned()));
             assert!(names.contains(&"_migrations".to_owned()));
             Ok(())
         })
@@ -176,7 +193,7 @@ mod tests {
         db.with_conn(|conn| {
             let version: i64 =
                 conn.query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))?;
-            assert_eq!(version, 1);
+            assert_eq!(version, SCHEMA_VERSION);
             Ok(())
         })
         .unwrap();
