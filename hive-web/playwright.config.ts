@@ -9,10 +9,10 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'pnpm dev --host 0.0.0.0 --port 5173',
+    command: 'pnpm preview --host 0.0.0.0 --port 5173',
     port: 5173,
     reuseExistingServer: true,
-    timeout: 30000,
+    timeout: 60000,
   },
   projects: [
     {

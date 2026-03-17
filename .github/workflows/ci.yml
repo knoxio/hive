@@ -67,6 +67,8 @@ jobs:
         run: cd hive-web && pnpm install --frozen-lockfile
       - name: Install Playwright browsers
         run: cd hive-web && pnpm exec playwright install chromium --with-deps
+      - name: Build frontend
+        run: cd hive-web && pnpm build
 
       - name: Start hive-server
         run: |
