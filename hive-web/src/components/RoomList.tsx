@@ -1,5 +1,7 @@
 /** Room list sidebar component (FE-003). */
 
+import { EmptyState } from './EmptyState';
+
 interface Room {
   id: string;
   name: string;
@@ -10,14 +12,20 @@ interface RoomListProps {
   rooms: Room[];
   selectedRoomId: string | null;
   onSelectRoom: (roomId: string) => void;
+  /** Called when the user clicks "Create your first room". */
+  onCreateRoom?: () => void;
 }
 
-export function RoomList({ rooms, selectedRoomId, onSelectRoom }: RoomListProps) {
+export function RoomList({ rooms, selectedRoomId, onSelectRoom, onCreateRoom }: RoomListProps) {
   if (rooms.length === 0) {
     return (
-      <div className="p-3 text-sm text-gray-500">
-        No rooms available
-      </div>
+      <EmptyState
+        data-testid="room-list-empty"
+        icon="🏠"
+        title="No rooms yet"
+        description="Create your first room to start chatting with your team."
+        action={onCreateRoom ? { label: 'Create your first room', onClick: onCreateRoom } : undefined}
+      />
     );
   }
 
@@ -47,3 +55,4 @@ export function RoomList({ rooms, selectedRoomId, onSelectRoom }: RoomListProps)
 }
 
 export type { Room, RoomListProps };
+

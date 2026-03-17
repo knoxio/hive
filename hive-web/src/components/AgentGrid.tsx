@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -162,9 +163,17 @@ export function AgentGrid() {
         )}
 
         {agents.length === 0 && !error ? (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            No agents running. Use /spawn in a room to start one.
-          </div>
+          <EmptyState
+            data-testid="agent-grid-empty"
+            icon="🤖"
+            title="No agents connected"
+            description="No agents are registered in this Hive instance. Use /spawn in a room to start one."
+            action={{
+              label: 'View agent documentation',
+              onClick: () => undefined,
+              href: 'https://github.com/knoxio/room-ralph',
+            }}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {agents.map((agent) => (
