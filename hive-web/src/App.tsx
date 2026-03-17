@@ -579,12 +579,12 @@ function App() {
               </div>
               {/* Chat timeline */}
               <ChatTimeline
+                key={selectedRoomId ?? ''}
                 messages={allMessages}
                 currentUser={getUserFromToken()?.username ?? "hive-user"}
                 onLoadMore={() => void loadMore(selectedRoomId)}
                 isLoadingMore={historyLoading}
                 atBeginning={!historyHasMore && historyMessages.length > 0}
-                roomId={selectedRoomId ?? undefined}
               />
               {/* Message input */}
               <MessageInput

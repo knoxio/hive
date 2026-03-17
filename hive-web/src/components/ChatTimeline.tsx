@@ -9,12 +9,6 @@ interface ChatTimelineProps {
   isLoadingMore?: boolean;
   /** Whether there are no more historical messages to load. */
   atBeginning?: boolean;
-  /**
-   * The active room ID. When this changes the timeline resets to the bottom
-   * using instant (non-animated) scrolling — distinguishing a room switch
-   * from a new live message (which uses smooth scrolling).
-   */
-  roomId?: string;
 }
 
 /** 5 minutes in milliseconds — threshold for message grouping. */
@@ -52,8 +46,9 @@ function buildGroupFlags(messages: RoomMessage[]): boolean[] {
  * visible content does not jump — we preserve the relative scroll offset by
  * recording scrollHeight before the update and correcting scrollTop after.
  *
- * Room switching: when roomId changes, the timeline immediately jumps to the
- * bottom via instant (non-animated) scroll and resets unseen state.
+ * Room switching is handled by the parent passing key={roomId} — React
+ * remounts this component on room change, resetting all internal state
+ * automatically and scrolling to the bottom on mount.
  */
 export default function ChatTimeline({
   messages,
@@ -61,7 +56,6 @@ export default function ChatTimeline({
   onLoadMore,
   isLoadingMore,
   atBeginning,
-  roomId,
 }: ChatTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -75,9 +69,6 @@ export default function ChatTimeline({
   // Scroll anchoring: record scrollHeight before prepend, restore after.
   const scrollHeightBeforeRef = useRef<number>(0);
   const isPrependingRef = useRef(false);
-
-  // Room-switch detection: instant scroll when roomId changes.
-  const prevRoomIdRef = useRef<string | undefined>(roomId);
 
   function checkAtBottom() {
     const el = containerRef.current;
@@ -97,22 +88,13 @@ export default function ChatTimeline({
   // A prepend increases length but the first message ID changes.
   const firstMsgIdRef = useRef<string | undefined>(messages[0]?.id);
 
-  // Room-switch: instant scroll to bottom when roomId changes.
-  // Runs as useLayoutEffect so the jump is invisible to the user (before paint).
+  // On mount: instantly scroll to the bottom (room was just selected / component remounted).
   useLayoutEffect(() => {
-    if (roomId === prevRoomIdRef.current) return;
-    prevRoomIdRef.current = roomId;
-
     const el = containerRef.current;
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
-    // Reset unseen state and length tracking for the new room.
-    setUnseenCount(0);
-    setIsAtBottom(true);
-    prevLengthRef.current = messages.length;
-    firstMsgIdRef.current = messages[0]?.id;
-  }, [roomId, messages]);
+  }, []);
 
   // Scroll anchoring: restore scroll position after a prepend to prevent
   // the visible content from jumping upward.
