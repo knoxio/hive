@@ -14,6 +14,7 @@ use axum::{
     Json, Router,
 };
 use config::HiveConfig;
+use tower_http::cors::{Any, CorsLayer};
 
 /// Shared application state.
 struct AppState {
@@ -109,7 +110,13 @@ async fn main() {
         )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
-        .with_state(state);
+        .with_state(state)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
