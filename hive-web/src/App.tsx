@@ -195,25 +195,23 @@ function App() {
     }
     let cancelled = false;
     apiMemberRoomRef.current = selectedRoomId;
+    type ApiMember = {
+      username: string;
+      display_name: string | null;
+      role: string;
+      presence: string;
+    };
     fetch(`${API_BASE}/api/rooms/${selectedRoomId}/members`, {
       headers: authHeader(),
     })
-      .then((res) => {
-        if (!res.ok) return [];
-        return res.json() as Promise<{
-          members: Array<{
-            username: string;
-            display_name: string | null;
-            role: string;
-            presence: string;
-          }>;
-        }>;
+      .then((res): Promise<{ members: ApiMember[] }> => {
+        if (!res.ok) return Promise.resolve({ members: [] });
+        return res.json() as Promise<{ members: ApiMember[] }>;
       })
       .then((data) => {
         if (cancelled || apiMemberRoomRef.current !== selectedRoomId) return;
-        const list = Array.isArray(data) ? [] : (data.members ?? []);
         setApiMembers(
-          list.map((m) => ({
+          data.members.map((m: ApiMember) => ({
             username: m.username,
             displayName: m.display_name ?? undefined,
             status: m.presence === "online" ? "online" : undefined,
