@@ -13,8 +13,6 @@ test.describe('BE-025: Logging', () => {
   test('health endpoint response includes request tracing', async ({ request }) => {
     const response = await request.get(`${API_URL}/api/health`);
     expect(response.status()).toBe(200);
-    // Server should be logging requests — verify via response headers if present
-    const headers = response.headers();
     // x-request-id header indicates structured logging is active
     // Accept either present or absent — the test verifies the endpoint works
     expect(response.ok()).toBeTruthy();
