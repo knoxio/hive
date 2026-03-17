@@ -129,7 +129,11 @@ async fn main() {
         .route("/api/setup/verify-daemon", post(setup::verify_daemon))
         .route("/api/setup/configure", post(setup::configure))
         .route("/api/setup/create-admin", post(setup::create_admin))
-        .route("/api/setup/complete", post(setup::complete));
+        .route("/api/setup/complete", post(setup::complete))
+        // WS relay — public route with its own JWT auth via ?token= query param.
+        // Browser WebSocket API cannot set Authorization headers during upgrade,
+        // so authentication is handled inside ws_handler itself.
+        .route("/ws/{room_id}", get(ws_relay::ws_handler));
 
     // Protected routes — require valid Bearer JWT.
     let protected_routes = Router::new()
@@ -169,7 +173,6 @@ async fn main() {
         )
         .route("/api/settings/history", get(settings::get_settings_history))
         .route("/api/agents", get(agents::list_agents))
-        .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             auth::auth_middleware,
