@@ -61,3 +61,24 @@ export function MemberSkeleton() {
     </div>
   );
 }
+
+/** Skeleton for the agent grid (3-column card layout). */
+export function AgentGridSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <SkeletonBar className="w-8 h-8 rounded-full shrink-0" />
+            <div className="flex-1 space-y-1">
+              <SkeletonBar className="h-4 w-3/4" />
+              <SkeletonBar className="h-3 w-1/2" />
+            </div>
+          </div>
+          <SkeletonBar className="h-3 w-full" />
+          <SkeletonBar className="h-3 w-2/3" />
+        </div>
+      ))}
+    </div>
+  );
+}

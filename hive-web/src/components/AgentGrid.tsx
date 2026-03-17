@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
+import { AgentGridSkeleton } from './Skeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -76,7 +78,7 @@ function AgentCard({ agent }: { agent: Agent }) {
 export function AgentGrid() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [daemonOffline, setDaemonOffline] = useState(false);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -84,16 +86,18 @@ export function AgentGrid() {
       if (res.ok) {
         const data = await res.json();
         setAgents(data.agents || data || []);
-        setError(null);
-      } else if (res.status === 501) {
+        setDaemonOffline(false);
+      } else if (res.status === 503) {
+        setDaemonOffline(true);
         setAgents([]);
-        setError('Agent management not yet implemented');
       } else {
-        setError(`Failed to fetch agents: ${res.status}`);
+        // 501 (not implemented) or other — show empty, not offline
+        setAgents([]);
+        setDaemonOffline(false);
       }
     } catch {
+      setDaemonOffline(true);
       setAgents([]);
-      setError('Cannot connect to hive-server');
     } finally {
       setLoading(false);
     }
@@ -114,8 +118,21 @@ export function AgentGrid() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500">
-        Loading agents...
+      <div className="flex-1 overflow-hidden" data-testid="agent-grid">
+        <AgentGridSkeleton />
+      </div>
+    );
+  }
+
+  if (daemonOffline) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden" data-testid="agent-grid">
+        <EmptyState
+          icon="🔌"
+          title="Daemon offline"
+          description={`Cannot reach the Hive server at ${API_BASE}. Check that it is running.`}
+          action={{ label: 'Retry', onClick: fetchAgents }}
+        />
       </div>
     );
   }
@@ -153,20 +170,20 @@ export function AgentGrid() {
         )}
       </div>
 
-      {/* Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {error && (
-          <div className="mb-4 px-3 py-2 bg-yellow-900/30 border border-yellow-700 rounded text-sm text-yellow-300">
-            {error}
-          </div>
-        )}
-
-        {agents.length === 0 && !error ? (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            No agents running. Use /spawn in a room to start one.
-          </div>
+      {/* Grid or no-agents empty state */}
+      <div className="flex-1 overflow-y-auto">
+        {agents.length === 0 ? (
+          <EmptyState
+            icon="🤖"
+            title="No agents connected"
+            description="No agents are currently registered. Use /spawn in a room to start one."
+            action={{
+              label: 'View documentation',
+              href: 'https://github.com/knoxio/room#agents',
+            }}
+          />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
             {agents.map((agent) => (
               <AgentCard key={agent.username} agent={agent} />
             ))}

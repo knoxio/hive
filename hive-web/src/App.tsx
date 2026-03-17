@@ -31,6 +31,14 @@ function StatusDot({ status }: { status: ConnectionStatus }) {
   );
 }
 
+interface RoomsState {
+  loading: boolean;
+  daemonOffline: boolean;
+  rooms: Room[];
+  /** Increment to trigger a re-fetch (e.g. on Retry). */
+  fetchId: number;
+}
+
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -44,7 +52,18 @@ function App() {
   );
 
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
+
+  /**
+   * Rooms fetch state. Initial `loading: true` means the skeleton is shown
+   * immediately without any synchronous setState inside the effect.
+   * Increment `fetchId` (outside the effect) to trigger a re-fetch.
+   */
+  const [roomsState, setRoomsState] = useState<RoomsState>({
+    loading: true,
+    daemonOffline: false,
+    rooms: [],
+    fetchId: 0,
+  });
 
   // WebSocket connection to the selected room
   const wsUrl = selectedRoomId ? `${WS_BASE}/ws/${selectedRoomId}` : "";
@@ -53,40 +72,61 @@ function App() {
     autoConnect: !!selectedRoomId,
   });
 
-  // Fetch rooms from backend API on mount
+  // Fetch rooms. All setState calls happen in async callbacks or event handlers
+  // — never synchronously in the effect body — to satisfy react-hooks/set-state-in-effect.
   useEffect(() => {
     let cancelled = false;
+
     fetch(`${API_BASE}/api/rooms`)
-      .then((res) => {
-        if (!res.ok) {
-          console.warn(`Failed to fetch rooms: ${res.status}`);
-          if (!cancelled) setRooms([]);
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 503) {
+          setRoomsState((s) => ({
+            ...s,
+            loading: false,
+            daemonOffline: true,
+            rooms: [],
+          }));
           return;
         }
-        return res.json();
-      })
-      .then((data) => {
-        if (cancelled || !data) return;
-        const roomList = (data.rooms || data || []) as Array<{
-          id: string;
-          name?: string;
-        }>;
-        setRooms(
-          roomList.map((r) => ({
-            id: r.id || r.name || "",
-            name: r.name || r.id || "",
-            unreadCount: 0,
-          }))
-        );
+        if (!res.ok) {
+          console.warn(`Failed to fetch rooms: ${res.status}`);
+          setRoomsState((s) => ({ ...s, loading: false, rooms: [] }));
+          return;
+        }
+        const data = (await res.json()) as
+          | { rooms?: Array<{ id: string; name?: string }> }
+          | Array<{ id: string; name?: string }>;
+        if (cancelled) return;
+        const raw = Array.isArray(data) ? data : (data.rooms ?? []);
+        const rooms: Room[] = raw.map((r) => ({
+          id: r.id || r.name || "",
+          name: r.name || r.id || "",
+          unreadCount: 0,
+        }));
+        setRoomsState((s) => ({
+          ...s,
+          loading: false,
+          daemonOffline: false,
+          rooms,
+        }));
       })
       .catch((err) => {
         console.warn("Cannot connect to hive-server:", err);
-        if (!cancelled) setRooms([]);
+        if (!cancelled) {
+          setRoomsState((s) => ({
+            ...s,
+            loading: false,
+            daemonOffline: true,
+            rooms: [],
+          }));
+        }
       });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [roomsState.fetchId]);
 
   // Extract members from messages
   const members: Member[] = (() => {
@@ -172,9 +212,20 @@ function App() {
           <div className="flex-1 overflow-y-auto">
             {activeTab === "rooms" ? (
               <RoomList
-                rooms={rooms}
+                rooms={roomsState.rooms}
                 selectedRoomId={selectedRoomId}
                 onSelectRoom={handleSelectRoom}
+                loading={roomsState.loading}
+                daemonOffline={roomsState.daemonOffline}
+                daemonUrl={API_BASE}
+                onRetry={() =>
+                  setRoomsState((s) => ({
+                    ...s,
+                    loading: true,
+                    daemonOffline: false,
+                    fetchId: s.fetchId + 1,
+                  }))
+                }
               />
             ) : (
               <div className="px-3 py-2 text-sm text-gray-500">
