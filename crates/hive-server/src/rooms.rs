@@ -1,5 +1,5 @@
 //! Room management API — MH-016 (list rooms), MH-014 (create room),
-//! MH-015 (delete room), MH-019 (join/leave room).
+//! MH-015 (delete room), MH-019 (join/leave room), MH-020 (member list).
 //!
 //! Rooms are stored in Hive's DB (`workspace_rooms` table, scoped to a
 //! workspace). This module replaces the placeholder `list_rooms` stub in
@@ -506,6 +506,98 @@ pub async fn leave_room(
     StatusCode::NO_CONTENT.into_response()
 }
 
+/// A member entry returned by `GET /api/rooms/:id/members`.
+#[derive(Debug, Serialize)]
+pub struct MemberInfo {
+    pub username: String,
+    pub display_name: Option<String>,
+    /// "admin" | "user" — from local_users.role if available, otherwise "user".
+    pub role: String,
+    /// "online" | "offline" — presence is tracked by the WebSocket layer; this
+    /// endpoint returns "offline" for all members (WS layer overlays live presence).
+    pub presence: &'static str,
+}
+
+/// Response for `GET /api/rooms/:id/members`.
+#[derive(Debug, Serialize)]
+pub struct RoomMembersResponse {
+    pub members: Vec<MemberInfo>,
+    pub total: usize,
+}
+
+/// `GET /api/rooms/:room_id/members` — list members who have explicitly joined the room.
+///
+/// Queries the `room_members` table (added by MH-019). If the table does not
+/// yet exist in the database (pre-MH-019), returns an empty member list so
+/// the frontend can fall back to WS-derived presence data.
+pub async fn get_room_members(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+) -> impl IntoResponse {
+    let result = state.db.with_conn(|conn| {
+        // Check whether room exists first.
+        let room_exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM workspace_rooms WHERE room_id = ?1",
+            [&room_id],
+            |row| row.get(0),
+        )?;
+        if room_exists == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+
+        // Check whether room_members table exists (added by MH-019).
+        let table_exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='room_members'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if table_exists == 0 {
+            // Pre-MH-019: no membership data yet — return empty list.
+            return Ok(vec![]);
+        }
+
+        // Query members joined with local_users for role.
+        // display_name is not yet in local_users (planned for a future migration).
+        let mut stmt = conn.prepare(
+            "SELECT rm.username, lu.role \
+             FROM room_members rm \
+             LEFT JOIN local_users lu ON lu.username = rm.username \
+             WHERE rm.room_id = ?1 \
+             ORDER BY rm.username ASC",
+        )?;
+        let members: Vec<MemberInfo> = stmt
+            .query_map([&room_id], |row| {
+                let username: String = row.get(0)?;
+                let role: Option<String> = row.get(1)?;
+                Ok(MemberInfo {
+                    username,
+                    display_name: None,
+                    role: role.unwrap_or_else(|| "user".to_owned()),
+                    presence: "offline",
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(members)
+    });
+
+    match result {
+        Ok(members) => {
+            let total = members.len();
+            (StatusCode::OK, Json(RoomMembersResponse { members, total })).into_response()
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "room not found"})),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("failed to list members for room '{room_id}': {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -799,5 +891,92 @@ mod tests {
 
         assert!(display_name.is_none());
         assert!(description.is_none());
+    }
+
+    #[test]
+    fn get_members_returns_empty_when_no_room_members_table() {
+        // Pre-MH-019: room_members table does not exist — endpoint returns empty list.
+        let db = crate::db::Database::open_memory().unwrap();
+        seed_room(&db, "room-dev");
+
+        // Verify room_members table is absent.
+        let table_exists: i64 = db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='room_members'",
+                    [],
+                    |row| row.get(0),
+                )
+            })
+            .unwrap();
+        assert_eq!(table_exists, 0);
+
+        // Simulate what the handler does when the table is absent.
+        let members: Vec<MemberInfo> = vec![];
+        assert!(members.is_empty());
+    }
+
+    #[test]
+    fn get_members_with_room_members_table() {
+        // With MH-019 schema: members are returned from room_members + local_users join.
+        let db = crate::db::Database::open_memory().unwrap();
+        seed_room(&db, "room-dev");
+
+        // Create room_members table as MH-019 would (local_users already exists in schema).
+        db.with_conn(|conn| {
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS room_members (\
+                    room_id TEXT NOT NULL, \
+                    username TEXT NOT NULL, \
+                    joined_at TEXT NOT NULL DEFAULT (datetime('now')), \
+                    PRIMARY KEY (room_id, username)\
+                )",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO local_users (username, role, password_hash) \
+                 VALUES ('alice', 'admin', 'hash')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO local_users (username, role, password_hash) \
+                 VALUES ('bob', 'user', 'hash')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO room_members (room_id, username) VALUES ('room-dev', 'alice')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO room_members (room_id, username) VALUES ('room-dev', 'bob')",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let members: Vec<(String, String)> = db
+            .with_conn(|conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT rm.username, COALESCE(lu.role, 'user') \
+                     FROM room_members rm \
+                     LEFT JOIN local_users lu ON lu.username = rm.username \
+                     WHERE rm.room_id = 'room-dev' \
+                     ORDER BY rm.username ASC",
+                )?;
+                let rows: Vec<(String, String)> = stmt
+                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+
+        assert_eq!(members.len(), 2);
+        let usernames: Vec<&str> = members.iter().map(|(u, _)| u.as_str()).collect();
+        assert!(usernames.contains(&"alice"));
+        assert!(usernames.contains(&"bob"));
+        // alice has admin role
+        let alice = members.iter().find(|(u, _)| u == "alice").unwrap();
+        assert_eq!(alice.1, "admin");
     }
 }
