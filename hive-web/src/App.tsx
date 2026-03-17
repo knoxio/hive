@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
 import { CreateRoomModal } from "./components/CreateRoomModal";
 import { DeleteRoomModal } from "./components/DeleteRoomModal";
+import { JoinRoomModal } from "./components/JoinRoomModal";
 import { RoomSettingsPanel } from "./components/RoomSettingsPanel";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
@@ -14,6 +15,7 @@ import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
 import { authHeader, clearToken, getUserFromToken } from "./lib/auth";
+import { apiFetch } from "./lib/apiError";
 
 type Tab = "rooms" | "agents" | "tasks" | "costs";
 
@@ -73,6 +75,25 @@ function App() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showDeleteRoom, setShowDeleteRoom] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBrowseRooms, setShowBrowseRooms] = useState(false);
+
+  /**
+   * Set of room IDs the user has explicitly joined, persisted to localStorage.
+   * Initialised lazily from "hive-joined-rooms"; on first load (key absent)
+   * all workspace rooms are auto-joined for backward compatibility.
+   */
+  const [joinedRoomIds, setJoinedRoomIds] = useState<Set<string>>(() => {
+    const raw = localStorage.getItem("hive-joined-rooms");
+    if (raw !== null) {
+      return new Set(raw ? raw.split(",") : []);
+    }
+    // Key not yet set — will be populated once rooms load.
+    return new Set<string>();
+  });
+  /** Whether the initial localStorage seed has been applied. */
+  const [joinedSeedDone, setJoinedSeedDone] = useState(
+    () => localStorage.getItem("hive-joined-rooms") !== null
+  );
 
   /** Per-room scroll positions — preserved across room switches. */
   const scrollPositions = useRef<Map<string, number>>(new Map());
@@ -127,15 +148,26 @@ function App() {
           display_name?: string | null;
           description?: string | null;
         }>;
-        setRooms(
-          roomList.map((r) => ({
-            id: r.id || r.name || "",
-            name: r.name || r.id || "",
-            unreadCount: 0,
-            display_name: r.display_name ?? null,
-            description: r.description ?? null,
-          }))
-        );
+        const mapped: Room[] = roomList.map((r) => ({
+          id: r.id || r.name || "",
+          name: r.name || r.id || "",
+          unreadCount: 0,
+          display_name: r.display_name ?? null,
+          description: r.description ?? null,
+        }));
+        setRooms(mapped);
+
+        // Seed joinedRoomIds on first load (no localStorage entry yet):
+        // auto-join all workspace rooms for backward compatibility.
+        if (!joinedSeedDone && !cancelled) {
+          const allIds = new Set(mapped.map((r) => r.id));
+          setJoinedRoomIds(allIds);
+          localStorage.setItem(
+            "hive-joined-rooms",
+            Array.from(allIds).join(",")
+          );
+          setJoinedSeedDone(true);
+        }
       })
       .catch((err) => {
         console.warn("Cannot connect to hive-server:", err);
@@ -144,7 +176,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, joinedSeedDone]);
 
   // Extract members from messages
   const members: Member[] = (() => {
@@ -214,6 +246,51 @@ function App() {
     [selectedRoomId]
   );
 
+  /** Persist the joined-room set to localStorage. */
+  const persistJoined = useCallback((ids: Set<string>) => {
+    localStorage.setItem("hive-joined-rooms", Array.from(ids).join(","));
+  }, []);
+
+  /** Called when user joins a room from the browse modal. */
+  const handleJoinRoom = useCallback(
+    async (roomId: string) => {
+      await apiFetch(`${API_BASE}/api/rooms/${roomId}/join`, {
+        method: "POST",
+        headers: authHeader(),
+      });
+      setJoinedRoomIds((prev) => {
+        const next = new Set(prev);
+        next.add(roomId);
+        persistJoined(next);
+        return next;
+      });
+    },
+    [persistJoined]
+  );
+
+  /** Called when user leaves a room (browse modal or room header button). */
+  const handleLeaveRoom = useCallback(
+    async (roomId: string) => {
+      await apiFetch(`${API_BASE}/api/rooms/${roomId}/leave`, {
+        method: "POST",
+        headers: authHeader(),
+      });
+      setJoinedRoomIds((prev) => {
+        const next = new Set(prev);
+        next.delete(roomId);
+        persistJoined(next);
+        return next;
+      });
+      // Navigate away if the user just left the active room.
+      if (roomId === selectedRoomId) {
+        clearMessages();
+        navigate("/rooms");
+        setShowSettings(false);
+      }
+    },
+    [selectedRoomId, clearMessages, persistJoined, navigate]
+  );
+
   /** Called after a room is successfully created: add it to the list and navigate to it. */
   const handleRoomCreated = useCallback(
     (roomId: string) => {
@@ -221,18 +298,33 @@ function App() {
         if (prev.some((r) => r.id === roomId)) return prev;
         return [{ id: roomId, name: roomId, unreadCount: 0 }, ...prev];
       });
+      // Auto-join the newly created room.
+      setJoinedRoomIds((prev) => {
+        const next = new Set(prev);
+        next.add(roomId);
+        persistJoined(next);
+        return next;
+      });
       navigate(`/rooms/${roomId}`);
       setShowCreateRoom(false);
     },
-    [navigate]
+    [navigate, persistJoined]
   );
 
   /** Called after a room is successfully deleted: remove it from the list and navigate away. */
   const handleRoomDeleted = useCallback(() => {
+    if (selectedRoomId) {
+      setJoinedRoomIds((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedRoomId);
+        persistJoined(next);
+        return next;
+      });
+    }
     setRooms((prev) => prev.filter((r) => r.id !== selectedRoomId));
     navigate("/rooms");
     setShowDeleteRoom(false);
-  }, [selectedRoomId, navigate]);
+  }, [selectedRoomId, navigate, persistJoined]);
 
   // Handle sending messages
   const handleSend = useCallback(
@@ -330,21 +422,32 @@ function App() {
               {activeTab}
             </span>
             {activeTab === "rooms" && (
-              <button
-                onClick={() => setShowCreateRoom(true)}
-                aria-label="Create room"
-                data-testid="create-room-button"
-                className="text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none"
-                title="Create room"
-              >
-                +
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowBrowseRooms(true)}
+                  aria-label="Browse rooms"
+                  data-testid="browse-rooms-button"
+                  className="text-gray-500 hover:text-gray-200 transition-colors text-sm leading-none px-1"
+                  title="Browse rooms"
+                >
+                  ⊕
+                </button>
+                <button
+                  onClick={() => setShowCreateRoom(true)}
+                  aria-label="Create room"
+                  data-testid="create-room-button"
+                  className="text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none"
+                  title="Create room"
+                >
+                  +
+                </button>
+              </div>
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {activeTab === "rooms" ? (
               <RoomList
-                rooms={rooms}
+                rooms={rooms.filter((r) => joinedRoomIds.has(r.id))}
                 selectedRoomId={selectedRoomId}
                 onSelectRoom={handleSelectRoom}
                 onCreateRoom={() => setShowCreateRoom(true)}
@@ -367,6 +470,15 @@ function App() {
                   {rooms.find((r) => r.id === selectedRoomId)?.display_name ?? `#${selectedRoomId}`}
                 </h2>
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleLeaveRoom(selectedRoomId)}
+                    aria-label="Leave room"
+                    data-testid="leave-room-button"
+                    className="text-xs text-gray-500 hover:text-yellow-400 transition-colors px-2 py-0.5 rounded border border-transparent hover:border-yellow-700"
+                    title="Leave room (removes from sidebar)"
+                  >
+                    Leave
+                  </button>
                   <button
                     onClick={() => setShowSettings((v) => !v)}
                     aria-label="Room settings"
@@ -477,6 +589,17 @@ function App() {
           />
         );
       })()}
+
+      {/* Browse / join-leave rooms modal */}
+      {showBrowseRooms && (
+        <JoinRoomModal
+          allRooms={rooms}
+          joinedRoomIds={joinedRoomIds}
+          onJoin={handleJoinRoom}
+          onLeave={handleLeaveRoom}
+          onClose={() => setShowBrowseRooms(false)}
+        />
+      )}
     </div>
   );
 }
