@@ -7,6 +7,8 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { LoginPage } from './components/LoginPage.tsx'
 import { ProfilePage } from './components/ProfilePage.tsx'
 import { RequireAuth } from './components/RequireAuth.tsx'
+import { SetupGuard } from './components/SetupGuard.tsx'
+import { SetupWizard } from './components/SetupWizard.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
 import { UsersPage } from './components/UsersPage.tsx'
 
@@ -16,6 +18,9 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <ErrorBoundary>
           <Routes>
+            {/* First-run wizard — public, no SetupGuard to avoid redirect loop */}
+            <Route path="/setup" element={<SetupWizard />} />
+
             {/* Public — no auth required */}
             <Route path="/login" element={<LoginPage />} />
 
@@ -29,7 +34,7 @@ createRoot(document.getElementById('root')!).render(
               }
             />
 
-            {/* Protected — redirect to /login when no token */}
+            {/* Protected — setup must be complete, then auth required */}
             <Route
               path="/profile"
               element={
@@ -41,9 +46,11 @@ createRoot(document.getElementById('root')!).render(
             <Route
               path="/*"
               element={
-                <RequireAuth>
-                  <App />
-                </RequireAuth>
+                <SetupGuard>
+                  <RequireAuth>
+                    <App />
+                  </RequireAuth>
+                </SetupGuard>
               }
             />
           </Routes>
