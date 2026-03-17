@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 /// Schema version — bump when adding new migrations.
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 /// SQL statements for schema v1.
 const SCHEMA_V1: &str = r#"
@@ -113,6 +113,12 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 );
 "#;
 
+/// SQL statements for schema v7 — room metadata fields.
+const SCHEMA_V7: &str = r#"
+ALTER TABLE workspace_rooms ADD COLUMN display_name TEXT;
+ALTER TABLE workspace_rooms ADD COLUMN description TEXT;
+"#;
+
 /// A row from `app_settings_history`.
 #[derive(Debug, Clone)]
 pub struct SettingHistoryRow {
@@ -213,6 +219,12 @@ impl Database {
             conn.execute_batch(SCHEMA_V6)?;
             conn.execute("INSERT INTO _migrations (version) VALUES (6)", [])?;
             tracing::info!("database migrated to schema v6");
+        }
+
+        if current < 7 {
+            conn.execute_batch(SCHEMA_V7)?;
+            conn.execute("INSERT INTO _migrations (version) VALUES (7)", [])?;
+            tracing::info!("database migrated to schema v7");
         }
 
         let final_version: i64 = conn.query_row(

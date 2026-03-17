@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
 import { CreateRoomModal } from "./components/CreateRoomModal";
 import { DeleteRoomModal } from "./components/DeleteRoomModal";
+import { RoomSettingsPanel } from "./components/RoomSettingsPanel";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
 import { MessageInput } from "./components/MessageInput";
@@ -67,6 +68,7 @@ function App() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showDeleteRoom, setShowDeleteRoom] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   /** Invalidate the server-side token and clear local auth state. */
   const handleLogout = useCallback(async () => {
@@ -113,12 +115,16 @@ function App() {
         const roomList = (data.rooms || data || []) as Array<{
           id: string;
           name?: string;
+          display_name?: string | null;
+          description?: string | null;
         }>;
         setRooms(
           roomList.map((r) => ({
             id: r.id || r.name || "",
             name: r.name || r.id || "",
             unreadCount: 0,
+            display_name: r.display_name ?? null,
+            description: r.description ?? null,
           }))
         );
       })
@@ -148,15 +154,30 @@ function App() {
     return Array.from(seen.values());
   })();
 
-  // Handle room selection
+  // Handle room selection — close settings panel when switching rooms.
   const handleSelectRoom = useCallback(
     (roomId: string) => {
       if (roomId !== selectedRoomId) {
         clearMessages();
         setSelectedRoomId(roomId);
+        setShowSettings(false);
       }
     },
     [selectedRoomId, clearMessages]
+  );
+
+  /** Called when the settings panel saves changes — update room metadata in state. */
+  const handleSettingsUpdated = useCallback(
+    (updated: { display_name: string | null; description: string | null }) => {
+      setRooms((prev) =>
+        prev.map((r) =>
+          r.id === selectedRoomId
+            ? { ...r, display_name: updated.display_name, description: updated.description }
+            : r
+        )
+      );
+    },
+    [selectedRoomId]
   );
 
   /** Called after a room is successfully created: add it to the list and select it. */
@@ -307,16 +328,29 @@ function App() {
             <>
               {/* Room header */}
               <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">#{selectedRoomId}</h2>
-                <button
-                  onClick={() => setShowDeleteRoom(true)}
-                  aria-label="Delete room"
-                  data-testid="delete-room-button"
-                  className="text-gray-500 hover:text-red-400 transition-colors"
-                  title="Delete room"
-                >
-                  🗑
-                </button>
+                <h2 className="text-sm font-semibold">
+                  {rooms.find((r) => r.id === selectedRoomId)?.display_name ?? `#${selectedRoomId}`}
+                </h2>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowSettings((v) => !v)}
+                    aria-label="Room settings"
+                    data-testid="room-settings-button"
+                    className={`text-gray-500 hover:text-gray-200 transition-colors text-base leading-none p-1 rounded ${showSettings ? "text-blue-400" : ""}`}
+                    title="Room settings"
+                  >
+                    ⚙
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteRoom(true)}
+                    aria-label="Delete room"
+                    data-testid="delete-room-button"
+                    className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                    title="Delete room"
+                  >
+                    🗑
+                  </button>
+                </div>
               </div>
               {/* Chat timeline */}
               <div className="flex-1 overflow-y-auto" data-testid="chat-timeline">
@@ -386,6 +420,24 @@ function App() {
           onClose={() => setShowDeleteRoom(false)}
         />
       )}
+
+      {/* Room settings panel */}
+      {showSettings && selectedRoomId && (() => {
+        const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
+        if (!selectedRoom) return null;
+        return (
+          <RoomSettingsPanel
+            room={{
+              id: selectedRoom.id,
+              name: selectedRoom.name,
+              display_name: selectedRoom.display_name ?? null,
+              description: selectedRoom.description ?? null,
+            }}
+            onClose={() => setShowSettings(false)}
+            onUpdated={handleSettingsUpdated}
+          />
+        );
+      })()}
     </div>
   );
 }
