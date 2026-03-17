@@ -172,9 +172,17 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
     setMessages([]);
   }, []);
 
-  // Auto-connect on mount (deferred to avoid setState-in-effect lint)
+  // Auto-connect on mount and whenever the URL changes (e.g. room switch).
+  //
+  // Including `url` in the dependency array ensures that when the user
+  // navigates to a different room the cleanup tears down the old WebSocket
+  // and the effect body opens a fresh one to the new URL. Without this,
+  // the old connection would persist across room switches (MH-027).
   useEffect(() => {
-    if (!autoConnect) return;
+    if (!autoConnect || !url) return;
+    // Reset retry counter so a room switch starts fresh rather than
+    // immediately exhausting the inherited attempt budget.
+    retriesRef.current = 0;
     const timer = setTimeout(() => connectRef.current(), 0);
     return () => {
       clearTimeout(timer);
@@ -186,7 +194,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
         wsRef.current = null;
       }
     };
-  }, [autoConnect]);
+  }, [autoConnect, url]);
 
   return {
     status,
