@@ -14,3 +14,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - JoinRoomModal — browse all workspace rooms and join/leave from a modal dialog (MH-019)
 - Sidebar now shows only joined rooms; joined state persisted to localStorage (MH-019)
 - "Leave" button in room header for quick leave of the current room (MH-019)
+
