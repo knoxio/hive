@@ -24,7 +24,7 @@ services:
     volumes:
       - ./crates:/app/crates
       - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
+      - ./Cargo.lock:/app/Cargo.lock
       - cargo-cache:/usr/local/cargo/registry
       - hive-data:/root/.hive
     ports:
