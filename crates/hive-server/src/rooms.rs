@@ -1,4 +1,5 @@
-//! Room management API — MH-016 (list rooms), MH-014 (create room), MH-015 (delete room).
+//! Room management API — MH-016 (list rooms), MH-014 (create room),
+//! MH-015 (delete room), MH-019 (join/leave room).
 //!
 //! Rooms are stored in Hive's DB (`workspace_rooms` table, scoped to a
 //! workspace). This module replaces the placeholder `list_rooms` stub in
@@ -13,11 +14,11 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
+    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
+use crate::{auth::Claims, AppState};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -392,6 +393,119 @@ pub async fn patch_room(
     }
 }
 
+/// Response for `POST /api/rooms/:room_id/join`.
+#[derive(Debug, Serialize)]
+pub struct JoinRoomResponse {
+    pub room_id: String,
+    pub joined: bool,
+}
+
+/// Extract the daemon REST base URL from config.
+fn daemon_base(state: &AppState) -> String {
+    state
+        .config
+        .daemon
+        .ws_url
+        .replace("ws://", "http://")
+        .replace("wss://", "https://")
+}
+
+/// `POST /api/rooms/:room_id/join` — join a room (MH-019).
+///
+/// Registers the authenticated user with the room daemon so they can receive
+/// and send messages. Returns 404 if the room does not exist in the DB.
+/// Gracefully degrades when the daemon is unreachable — the join still
+/// succeeds from Hive's perspective so the frontend can update the sidebar.
+pub async fn join_room(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    Extension(claims): Extension<Claims>,
+) -> impl IntoResponse {
+    // Verify room exists in Hive DB.
+    let exists = state.db.with_conn(|conn| {
+        conn.query_row(
+            "SELECT COUNT(*) FROM workspace_rooms WHERE room_id = ?1",
+            rusqlite::params![room_id],
+            |row| row.get::<_, i64>(0),
+        )
+    });
+    match exists {
+        Ok(0) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "room not found"})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("DB error checking room '{}': {e}", room_id);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
+        Ok(_) => {}
+    }
+
+    // Best-effort: register user with the daemon.  Daemon may not be running
+    // (dev / test environments).  We do not fail the join if the daemon is
+    // unreachable.
+    let base = daemon_base(&state);
+    let daemon_url = format!("{base}/api/{room_id}/join");
+    let _ = reqwest::Client::new()
+        .post(&daemon_url)
+        .timeout(std::time::Duration::from_secs(3))
+        .json(&serde_json::json!({"username": claims.username}))
+        .send()
+        .await;
+
+    tracing::info!(room_id = %room_id, username = %claims.username, "user joined room");
+    (
+        StatusCode::OK,
+        Json(JoinRoomResponse {
+            room_id,
+            joined: true,
+        }),
+    )
+        .into_response()
+}
+
+/// `POST /api/rooms/:room_id/leave` — leave a room (MH-019).
+///
+/// Acknowledges the leave request.  The room daemon has no explicit REST
+/// leave endpoint; disconnecting the WebSocket session is the mechanism.
+/// The frontend is responsible for removing the room from the local joined
+/// list after receiving a 204 from this endpoint.
+///
+/// Returns 404 if the room does not exist in the DB.
+pub async fn leave_room(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    Extension(claims): Extension<Claims>,
+) -> impl IntoResponse {
+    let exists = state.db.with_conn(|conn| {
+        conn.query_row(
+            "SELECT COUNT(*) FROM workspace_rooms WHERE room_id = ?1",
+            rusqlite::params![room_id],
+            |row| row.get::<_, i64>(0),
+        )
+    });
+    match exists {
+        Ok(0) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "room not found"})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("DB error checking room '{}': {e}", room_id);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
+        Ok(_) => {}
+    }
+
+    tracing::info!(room_id = %room_id, username = %claims.username, "user left room");
+    StatusCode::NO_CONTENT.into_response()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -538,6 +652,55 @@ mod tests {
             })
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn join_room_response_serializes_correctly() {
+        let resp = JoinRoomResponse {
+            room_id: "room-dev".to_owned(),
+            joined: true,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["room_id"], "room-dev");
+        assert_eq!(json["joined"], true);
+    }
+
+    #[test]
+    fn daemon_base_converts_ws_to_http() {
+        use crate::config::{DaemonConfig, HiveConfig, ServerConfig};
+        let state = crate::AppState {
+            config: HiveConfig {
+                server: ServerConfig::default(),
+                daemon: DaemonConfig {
+                    socket_path: std::path::PathBuf::from("/tmp/test.sock"),
+                    ws_url: "ws://127.0.0.1:4200".to_owned(),
+                },
+            },
+            db: crate::db::Database::open_memory().unwrap(),
+            jwt_secret: b"test-secret-must-be-long-enough-for-hmac".to_vec(),
+            jwt_ttl: 3600,
+            start_time: std::time::Instant::now(),
+        };
+        assert_eq!(daemon_base(&state), "http://127.0.0.1:4200");
+    }
+
+    #[test]
+    fn daemon_base_converts_wss_to_https() {
+        use crate::config::{DaemonConfig, HiveConfig, ServerConfig};
+        let state = crate::AppState {
+            config: HiveConfig {
+                server: ServerConfig::default(),
+                daemon: DaemonConfig {
+                    socket_path: std::path::PathBuf::from("/tmp/test.sock"),
+                    ws_url: "wss://example.com".to_owned(),
+                },
+            },
+            db: crate::db::Database::open_memory().unwrap(),
+            jwt_secret: b"test-secret-must-be-long-enough-for-hmac".to_vec(),
+            jwt_ttl: 3600,
+            start_time: std::time::Instant::now(),
+        };
+        assert_eq!(daemon_base(&state), "https://example.com");
     }
 
     #[test]
