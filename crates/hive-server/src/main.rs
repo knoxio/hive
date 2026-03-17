@@ -163,6 +163,8 @@ async fn main() {
             get(rest_proxy::get_messages),
         )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
+        .route("/api/rooms/{room_id}/join", post(rooms::join_room))
+        .route("/api/rooms/{room_id}/leave", post(rooms::leave_room))
         .route(
             "/api/settings",
             get(settings::get_settings).patch(settings::patch_settings),
