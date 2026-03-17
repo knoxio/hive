@@ -90,13 +90,8 @@ jobs:
           echo "hive-server did not start in 30s" >&2
           exit 1
 
-      - name: List Playwright tests
-        run: cd hive-web && pnpm exec playwright test --list || true
-        env:
-          HIVE_API_URL: http://localhost:3000
-
       - name: Run Playwright tests
-        run: cd hive-web && pnpm exec playwright test e2e/ tests/e2e/
+        run: cd hive-web && pnpm exec playwright test
         env:
           HIVE_API_URL: http://localhost:3000
 
