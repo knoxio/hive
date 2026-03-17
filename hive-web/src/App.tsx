@@ -10,9 +10,17 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
-import { authHeader, clearToken } from "./lib/auth";
+import { authHeader, clearToken, getUserFromToken } from "./lib/auth";
 
 type Tab = "rooms" | "agents" | "tasks" | "costs";
+
+/** Extract two-char nav initials from the stored JWT. Returns "?" on failure. */
+function getNavInitials(): string {
+  const user = getUserFromToken();
+  const name = user?.username ?? "";
+  return name.length > 0 ? name.slice(0, 2).toUpperCase() : "?";
+}
+
 const TABS: Tab[] = ["rooms", "agents", "tasks", "costs"];
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -190,6 +198,15 @@ function App() {
         ))}
         <div className="ml-auto flex items-center gap-3">
           <StatusDot status={status} />
+          <button
+            onClick={() => navigate("/profile")}
+            data-testid="profile-nav-button"
+            className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold hover:bg-blue-500 transition-colors select-none"
+            aria-label="View profile"
+            title="Profile"
+          >
+            {getNavInitials()}
+          </button>
           <button
             onClick={handleLogout}
             disabled={loggingOut}
