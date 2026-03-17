@@ -8,6 +8,7 @@ import { LoginPage } from './components/LoginPage.tsx'
 import { ProfilePage } from './components/ProfilePage.tsx'
 import { RequireAuth } from './components/RequireAuth.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
+import { UsersPage } from './components/UsersPage.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -17,6 +18,16 @@ createRoot(document.getElementById('root')!).render(
           <Routes>
             {/* Public — no auth required */}
             <Route path="/login" element={<LoginPage />} />
+
+            {/* Admin-only — protected + role check enforced server-side */}
+            <Route
+              path="/admin/users"
+              element={
+                <RequireAuth>
+                  <UsersPage />
+                </RequireAuth>
+              }
+            />
 
             {/* Protected — redirect to /login when no token */}
             <Route

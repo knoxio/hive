@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 /// Schema version — bump when adding new migrations.
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 /// SQL statements for schema v1.
 const SCHEMA_V1: &str = r#"
@@ -97,6 +97,11 @@ CREATE TABLE IF NOT EXISTS app_settings_history (
     changed_by TEXT NOT NULL DEFAULT 'system',
     changed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+"#;
+
+/// SQL statements for schema v5 — user management fields.
+const SCHEMA_V5: &str = r#"
+ALTER TABLE local_users ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
 "#;
 
 /// A row from `app_settings_history`.
@@ -187,6 +192,12 @@ impl Database {
             conn.execute_batch(SCHEMA_V4)?;
             conn.execute("INSERT INTO _migrations (version) VALUES (4)", [])?;
             tracing::info!("database migrated to schema v4");
+        }
+
+        if current < 5 {
+            conn.execute_batch(SCHEMA_V5)?;
+            conn.execute("INSERT INTO _migrations (version) VALUES (5)", [])?;
+            tracing::info!("database migrated to schema v5");
         }
 
         let final_version: i64 = conn.query_row(

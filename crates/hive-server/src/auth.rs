@@ -115,18 +115,27 @@ pub(crate) async fn login(
 
     let (user_id, role) = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
-            let result: Option<(i64, String, String)> = conn
+            // Include active column — deactivated users must not log in.
+            let result: Option<(i64, String, String, i64)> = conn
                 .query_row(
-                    "SELECT id, password_hash, role FROM local_users WHERE username = ?1",
+                    "SELECT id, password_hash, role, active \
+                     FROM local_users WHERE username = ?1",
                     [&username],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )
                 .ok();
 
             match result {
                 None => Err(rusqlite::Error::QueryReturnedNoRows),
-                Some((id, hash, role)) => match bcrypt::verify(&password, &hash) {
-                    Ok(true) => Ok((id, role)),
+                Some((id, hash, role, active)) => match bcrypt::verify(&password, &hash) {
+                    Ok(true) if active != 0 => Ok((id, role)),
+                    Ok(true) => Err(rusqlite::Error::SqliteFailure(
+                        rusqlite::ffi::Error {
+                            code: rusqlite::ErrorCode::ConstraintViolation,
+                            extended_code: 0,
+                        },
+                        Some("ACCOUNT_DISABLED".to_string()),
+                    )),
                     _ => Err(rusqlite::Error::QueryReturnedNoRows),
                 },
             }
@@ -134,7 +143,13 @@ pub(crate) async fn login(
     })
     .await
     .map_err(|e| HiveError::Internal(format!("task join error: {e}")))?
-    .map_err(|_| HiveError::Unauthorized("invalid username or password".into()))?;
+    .map_err(|e| {
+        if e.to_string().contains("ACCOUNT_DISABLED") {
+            HiveError::Forbidden("account is disabled".into())
+        } else {
+            HiveError::Unauthorized("invalid username or password".into())
+        }
+    })?;
 
     // Issue JWT.
     let now = unix_now();

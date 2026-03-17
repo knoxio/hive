@@ -23,6 +23,11 @@ function getNavInitials(): string {
 
 const TABS: Tab[] = ["rooms", "agents", "tasks", "costs"];
 
+/** Return the role from the stored JWT, or null if not authenticated. */
+function getStoredRole(): string | null {
+  return getUserFromToken()?.role ?? null;
+}
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 
@@ -198,6 +203,15 @@ function App() {
         ))}
         <div className="ml-auto flex items-center gap-3">
           <StatusDot status={status} />
+          {getStoredRole() === "admin" && (
+            <a
+              href="/admin/users"
+              data-testid="admin-nav-link"
+              className="px-3 py-1 rounded text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+            >
+              Admin
+            </a>
+          )}
           <button
             onClick={() => navigate("/profile")}
             data-testid="profile-nav-button"
