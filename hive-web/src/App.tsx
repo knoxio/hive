@@ -5,13 +5,14 @@ import { CreateRoomModal } from "./components/CreateRoomModal";
 import { DeleteRoomModal } from "./components/DeleteRoomModal";
 import { JoinRoomModal } from "./components/JoinRoomModal";
 import { RoomSettingsPanel } from "./components/RoomSettingsPanel";
+import { ConnectionStatusBar } from "./components/ConnectionStatusBar";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
 import { MessageInput } from "./components/MessageInput";
 import { AgentGrid } from "./components/AgentGrid";
 import { NotFoundPage } from "./components/ErrorPage";
 import { useWebSocket } from "./hooks/useWebSocket";
-import type { ConnectionStatus } from "./hooks/useWebSocket";
+import { useConnectionStatus } from "./hooks/useConnectionStatus";
 import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
 import { authHeader, clearToken, getToken, getUserFromToken } from "./lib/auth";
@@ -35,21 +36,6 @@ function getStoredRole(): string | null {
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
-
-/** Connection status indicator dot. */
-function StatusDot({ status }: { status: ConnectionStatus }) {
-  const colors: Record<ConnectionStatus, string> = {
-    connected: "bg-green-500",
-    connecting: "bg-yellow-500 animate-pulse",
-    disconnected: "bg-red-500",
-  };
-  return (
-    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-      <span className={`w-2 h-2 rounded-full ${colors[status]}`} />
-      {status}
-    </div>
-  );
-}
 
 function App() {
   const navigate = useNavigate();
@@ -126,10 +112,12 @@ function App() {
   const wsUrl = selectedRoomId
     ? `${WS_BASE}/ws/${selectedRoomId}?token=${encodeURIComponent(getToken() ?? "")}`
     : "";
-  const { status, messages, sendMessage, clearMessages } = useWebSocket({
-    url: wsUrl,
-    autoConnect: !!selectedRoomId,
-  });
+  const { status, messages, sendMessage, clearMessages, connect, retryAt, lastConnectedAt } =
+    useWebSocket({ url: wsUrl, autoConnect: !!selectedRoomId });
+
+  // Debounced connection status for the UI indicator (MH-026)
+  const { displayStatus, showRestoredToast, lastConnectedStr, nextRetryStr } =
+    useConnectionStatus({ status, retryAt, lastConnectedAt });
 
   // Fetch rooms from backend API on mount
   useEffect(() => {
@@ -440,7 +428,14 @@ function App() {
           </button>
         ))}
         <div className="ml-auto flex items-center gap-3">
-          <StatusDot status={status} />
+          <ConnectionStatusBar
+            displayStatus={displayStatus}
+            serverUrl={API_BASE}
+            lastConnectedStr={lastConnectedStr}
+            nextRetryStr={nextRetryStr}
+            showRestoredToast={showRestoredToast}
+            onRetry={connect}
+          />
           {getStoredRole() === "admin" && (
             <a
               href="/admin/users"
