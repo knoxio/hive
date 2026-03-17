@@ -7,12 +7,10 @@ coordinating through room's multi-agent infrastructure.
 
 ## Architecture
 
-- **hive-server** — Rust/axum backend that proxies to a co-located room daemon via WebSocket
-- **hive-web** — React web dashboard (Vite + TypeScript + Tailwind)
+- **crates/hive-server** — Rust/axum backend: REST API, JWT auth, SQLite, WebSocket relay to room daemon
+- **hive-web** — React + TypeScript + Tailwind frontend (Vite, SPA)
 
-## Status
-
-Phase 1 foundation shipped — backend server (health, config, WS relay, SQLite, error handling) and frontend scaffold (React three-panel layout, WebSocket hook, room list, chat timeline, member panel, message input). PRDs and 65+ user stories in `docs/`.
+See [docs/architecture.md](docs/architecture.md) for the full system diagram and data flow.
 
 ## Tech Stack
 
@@ -89,9 +87,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 ## Documentation
 
-- `docs/prd/` — Product requirement documents (server + frontend PRDs)
-- `docs/stories/backend/` — 26+ backend user stories
-- `docs/stories/frontend/` — 22+ frontend user stories
+- [docs/architecture.md](docs/architecture.md) — System diagram and component overview
+- [docs/api-reference.md](docs/api-reference.md) — All HTTP endpoints with request/response shapes
+- [docs/database-schema.md](docs/database-schema.md) — SQLite schema, migration history
+- [docs/development.md](docs/development.md) — Development guide: adding endpoints, components, tests
+- [docs/websocket-protocol.md](docs/websocket-protocol.md) — WebSocket protocol, message format, reconnection
+- [AGENTS.md](AGENTS.md) — Agent team coordination rules
+- `docs/prd/` — Product requirement documents
+- `docs/stories/` — User stories (must-have, should-have, can-have)
 
 ## License
 
