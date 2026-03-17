@@ -119,6 +119,20 @@ ALTER TABLE workspace_rooms ADD COLUMN display_name TEXT;
 ALTER TABLE workspace_rooms ADD COLUMN description TEXT;
 "#;
 
+/// All schema migrations in version order.
+///
+/// Each entry is `(version, sql)`. [`Database::migrate`] applies every
+/// migration whose version is greater than the current schema version.
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, SCHEMA_V1),
+    (2, SCHEMA_V2),
+    (3, SCHEMA_V3),
+    (4, SCHEMA_V4),
+    (5, SCHEMA_V5),
+    (6, SCHEMA_V6),
+    (7, SCHEMA_V7),
+];
+
 /// A row from `app_settings_history`.
 #[derive(Debug, Clone)]
 pub struct SettingHistoryRow {
@@ -185,46 +199,12 @@ impl Database {
             )
             .unwrap_or(0);
 
-        if current < 1 {
-            conn.execute_batch(SCHEMA_V1)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (1)", [])?;
-            tracing::info!("database migrated to schema v1");
-        }
-
-        if current < 2 {
-            conn.execute_batch(SCHEMA_V2)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (2)", [])?;
-            tracing::info!("database migrated to schema v2");
-        }
-
-        if current < 3 {
-            conn.execute_batch(SCHEMA_V3)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (3)", [])?;
-            tracing::info!("database migrated to schema v3");
-        }
-
-        if current < 4 {
-            conn.execute_batch(SCHEMA_V4)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (4)", [])?;
-            tracing::info!("database migrated to schema v4");
-        }
-
-        if current < 5 {
-            conn.execute_batch(SCHEMA_V5)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (5)", [])?;
-            tracing::info!("database migrated to schema v5");
-        }
-
-        if current < 6 {
-            conn.execute_batch(SCHEMA_V6)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (6)", [])?;
-            tracing::info!("database migrated to schema v6");
-        }
-
-        if current < 7 {
-            conn.execute_batch(SCHEMA_V7)?;
-            conn.execute("INSERT INTO _migrations (version) VALUES (7)", [])?;
-            tracing::info!("database migrated to schema v7");
+        for &(version, sql) in MIGRATIONS {
+            if current < version {
+                conn.execute_batch(sql)?;
+                conn.execute("INSERT INTO _migrations (version) VALUES (?1)", [version])?;
+                tracing::info!("database migrated to schema v{version}");
+            }
         }
 
         let final_version: i64 = conn.query_row(
