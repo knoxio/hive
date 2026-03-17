@@ -16,7 +16,7 @@ services:
     volumes:
       - ./crates:/app/crates:ro
       - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
+      - ./Cargo.lock:/app/Cargo.lock
       - hive-data:/root/.hive
     environment:
       RUST_LOG: hive=debug
