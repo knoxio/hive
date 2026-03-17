@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
+import { CreateRoomModal } from "./components/CreateRoomModal";
 import ChatTimeline from "./components/ChatTimeline";
 import { MemberPanel } from "./components/MemberPanel";
 import { MessageInput } from "./components/MessageInput";
@@ -58,6 +59,7 @@ function App() {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
 
   /** Invalidate the server-side token and clear local auth state. */
   const handleLogout = useCallback(async () => {
@@ -150,6 +152,17 @@ function App() {
     [selectedRoomId, clearMessages]
   );
 
+  /** Called after a room is successfully created: add it to the list and select it. */
+  const handleRoomCreated = useCallback((roomId: string) => {
+    setRooms((prev) => {
+      if (prev.some((r) => r.id === roomId)) return prev;
+      return [{ id: roomId, name: roomId, unreadCount: 0 }, ...prev];
+    });
+    clearMessages();
+    setSelectedRoomId(roomId);
+    setShowCreateRoom(false);
+  }, [clearMessages]);
+
   // Handle sending messages
   const handleSend = useCallback(
     (content: string) => {
@@ -223,8 +236,21 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
         <aside className="w-60 bg-gray-800 border-r border-gray-700 flex flex-col sidebar">
-          <div className="p-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            {activeTab}
+          <div className="px-3 py-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              {activeTab}
+            </span>
+            {activeTab === "rooms" && (
+              <button
+                onClick={() => setShowCreateRoom(true)}
+                aria-label="Create room"
+                data-testid="create-room-button"
+                className="text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none"
+                title="Create room"
+              >
+                +
+              </button>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {activeTab === "rooms" ? (
@@ -232,6 +258,7 @@ function App() {
                 rooms={rooms}
                 selectedRoomId={selectedRoomId}
                 onSelectRoom={handleSelectRoom}
+                onCreateRoom={() => setShowCreateRoom(true)}
               />
             ) : (
               <div className="px-3 py-2 text-sm text-gray-500">
@@ -299,6 +326,14 @@ function App() {
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-yellow-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
           Reconnecting to {selectedRoomId}...
         </div>
+      )}
+
+      {/* Create room modal */}
+      {showCreateRoom && (
+        <CreateRoomModal
+          onCreated={handleRoomCreated}
+          onClose={() => setShowCreateRoom(false)}
+        />
       )}
     </div>
   );
