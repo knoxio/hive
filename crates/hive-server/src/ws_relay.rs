@@ -27,7 +27,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use serde::Deserialize;
 use tokio_tungstenite::{connect_async, tungstenite::Message as TungsteniteMsg};
 
@@ -58,6 +61,12 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// Type alias for the daemon WebSocket stream.
 type DaemonStream =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Write half of a split [`DaemonStream`].
+type DaemonSink = SplitSink<DaemonStream, TungsteniteMsg>;
+
+/// Read half of a split [`DaemonStream`].
+type DaemonRx = SplitStream<DaemonStream>;
 
 /// GET /ws/:room_id — upgrade to WebSocket and relay to room daemon.
 ///
@@ -197,6 +206,20 @@ async fn try_reconnect(
     None
 }
 
+/// Reconnect to the daemon and return the split sink/stream pair.
+///
+/// Delegates to [`try_reconnect`] and splits the resulting stream. Returns
+/// `None` when all reconnection attempts are exhausted.
+async fn reconnect_daemon(
+    daemon_url: &str,
+    config: &DaemonWsConfig,
+    handshake: Option<&TungsteniteMsg>,
+) -> Option<(DaemonSink, DaemonRx)> {
+    try_reconnect(daemon_url, config, handshake)
+        .await
+        .map(|ws| ws.split())
+}
+
 /// Bidirectional relay between a frontend WebSocket and a room daemon WebSocket.
 ///
 /// Uses a single `select!` loop to handle:
@@ -259,9 +282,8 @@ async fn relay(
                     Some(Ok(fe_msg)) => {
                         if let Some(tung_msg) = axum_to_tungstenite(fe_msg) {
                             if daemon_tx.send(tung_msg).await.is_err() {
-                                match try_reconnect(&daemon_url, &config, handshake.as_ref()).await {
-                                    Some(ws) => {
-                                        let (tx, rx) = ws.split();
+                                match reconnect_daemon(&daemon_url, &config, handshake.as_ref()).await {
+                                    Some((tx, rx)) => {
                                         daemon_tx = tx;
                                         daemon_rx = rx;
                                         tracing::info!("relay reconnected: {daemon_url}");
@@ -283,9 +305,8 @@ async fn relay(
                 match msg {
                     Some(Ok(TungsteniteMsg::Close(_))) | None => {
                         tracing::warn!("daemon disconnected: {daemon_url}");
-                        match try_reconnect(&daemon_url, &config, handshake.as_ref()).await {
-                            Some(ws) => {
-                                let (tx, rx) = ws.split();
+                        match reconnect_daemon(&daemon_url, &config, handshake.as_ref()).await {
+                            Some((tx, rx)) => {
                                 daemon_tx = tx;
                                 daemon_rx = rx;
                                 tracing::info!("relay reconnected: {daemon_url}");
@@ -306,9 +327,8 @@ async fn relay(
                     }
                     Some(Err(e)) => {
                         tracing::warn!("daemon receive error: {e}");
-                        match try_reconnect(&daemon_url, &config, handshake.as_ref()).await {
-                            Some(ws) => {
-                                let (tx, rx) = ws.split();
+                        match reconnect_daemon(&daemon_url, &config, handshake.as_ref()).await {
+                            Some((tx, rx)) => {
                                 daemon_tx = tx;
                                 daemon_rx = rx;
                                 tracing::info!("relay reconnected after error: {daemon_url}");
@@ -326,9 +346,8 @@ async fn relay(
             _ = ping_interval.tick() => {
                 if daemon_tx.send(TungsteniteMsg::Ping(Vec::new().into())).await.is_err() {
                     tracing::warn!("keepalive ping failed: {daemon_url}");
-                    match try_reconnect(&daemon_url, &config, handshake.as_ref()).await {
-                        Some(ws) => {
-                            let (tx, rx) = ws.split();
+                    match reconnect_daemon(&daemon_url, &config, handshake.as_ref()).await {
+                        Some((tx, rx)) => {
                             daemon_tx = tx;
                             daemon_rx = rx;
                             tracing::info!("relay reconnected after ping failure: {daemon_url}");
