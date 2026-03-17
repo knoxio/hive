@@ -1,63 +1,93 @@
+/**
+ * BE-003: WebSocket relay tests.
+ *
+ * Uses Node.js's built-in `http` module to make a real WebSocket upgrade
+ * request and detect whether the server responds with 101 Switching Protocols.
+ * This replaces the previous try/catch + timeout-as-success pattern, which
+ * was fragile because a timeout can occur for reasons unrelated to WS support.
+ */
+import * as http from 'http';
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.HIVE_API_URL || 'http://localhost:3000';
+const API_BASE = process.env.HIVE_API_URL || 'http://localhost:3000';
 
-// ── BE-003: WebSocket Relay ───────────────────────────────────────────────────
+/** Result of a WebSocket upgrade attempt. */
+interface WsResult {
+  /** `'upgraded'` when the server responded with 101; otherwise the HTTP status code. */
+  statusOrUpgraded: 'upgraded' | number;
+}
+
+/**
+ * Attempt a WebSocket upgrade to `url` and return whether the server accepted
+ * it (101) or returned a plain HTTP response.
+ */
+function tryWsUpgrade(url: string): Promise<WsResult> {
+  return new Promise((resolve) => {
+    const parsed = new URL(url.replace(/^ws/, 'http'));
+    const options: http.RequestOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port ? Number(parsed.port) : 80,
+      path: parsed.pathname + parsed.search,
+      headers: {
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        // Static key — only the format matters for the handshake check
+        'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+        'Sec-WebSocket-Version': '13',
+        Host: `${parsed.hostname}:${parsed.port}`,
+      },
+    };
+
+    const req = http.request(options);
+
+    req.on('upgrade', (_res, socket) => {
+      socket.destroy();
+      resolve({ statusOrUpgraded: 'upgraded' });
+    });
+
+    req.on('response', (res) => {
+      // Server declined the upgrade and returned a plain HTTP response
+      resolve({ statusOrUpgraded: res.statusCode ?? 0 });
+    });
+
+    req.on('error', () => {
+      resolve({ statusOrUpgraded: 0 });
+    });
+
+    req.end();
+  });
+}
+
+/** Convert API_BASE (http://…) to ws://… */
+function wsUrl(path: string): string {
+  return API_BASE.replace(/^http/, 'ws') + path;
+}
 
 test.describe('BE-003: WebSocket relay', () => {
-  test('WS endpoint exists and responds to upgrade request', async ({ request }) => {
-    // AC: hive-server has a /ws/:room_id endpoint
-    // Playwright request.get() hangs on 101 Switching Protocols, so we use
-    // a short timeout — a timeout means the server accepted the upgrade (good).
-    // A non-101 status means the endpoint returned an error (also valid if
-    // daemon is unavailable).
-    try {
-      const response = await request.get(`${BASE_URL}/ws/test-room`, {
-        headers: {
-          'Upgrade': 'websocket',
-          'Connection': 'Upgrade',
-          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
-          'Sec-WebSocket-Version': '13',
-        },
-        timeout: 3000,
-      });
-      // Non-upgrade response — endpoint exists but returned an HTTP error
-      expect([400, 404, 502]).toContain(response.status());
-    } catch {
-      // Timeout or connection reset — server accepted the WS upgrade (101)
-      // and Playwright couldn't handle it. This is expected behavior.
-    }
+  test('WS endpoint accepts upgrade or returns a defined HTTP error', async () => {
+    const result = await tryWsUpgrade(wsUrl('/ws/test-room'));
+    // 'upgraded' → server accepted the WS handshake (101)
+    // 400/502/503 → server declined upgrade for a known reason (daemon unavailable, etc.)
+    const valid: Array<WsResult['statusOrUpgraded']> = ['upgraded', 400, 502, 503];
+    expect(valid).toContain(result.statusOrUpgraded);
   });
 
-  test('WS endpoint rejects non-upgrade requests', async ({ request }) => {
-    // AC: WS endpoint only handles WebSocket upgrade requests
-    const response = await request.get(`${BASE_URL}/ws/test-room`, {
-      timeout: 5000,
-    });
-    // Should reject with 400, 404, or 426 (Upgrade Required), not 200
-    expect(response.status()).not.toBe(200);
+  test('WS endpoint rejects plain HTTP GET with a non-200 status', async ({ request }) => {
+    // Plain HTTP GET (no Upgrade header) must not return 200
+    const resp = await request.get(`${API_BASE}/ws/test-room`, { timeout: 5000 });
+    expect(resp.status()).not.toBe(200);
   });
 
-  test('WS relay handles missing daemon gracefully', async ({ request }) => {
-    // AC: graceful error when room daemon is not running
-    // Same approach as test 1 — timeout means upgrade accepted, which is
-    // valid behavior (relay will close the WS after failing to connect upstream).
-    try {
-      const response = await request.get(`${BASE_URL}/ws/nonexistent-room`, {
-        headers: {
-          'Upgrade': 'websocket',
-          'Connection': 'Upgrade',
-          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
-          'Sec-WebSocket-Version': '13',
-        },
-        timeout: 3000,
-      });
-      // Non-upgrade response — 502/503 when daemon unavailable, 404 if not matched
-      expect([400, 404, 502, 503]).toContain(response.status());
-    } catch {
-      // Timeout or connection reset — server accepted the upgrade (101)
-      // and then closed the WS after failing to reach the daemon.
-      // This is correct behavior — the endpoint exists and handles gracefully.
-    }
+  test('WS endpoint for nonexistent room accepts upgrade or returns defined error', async () => {
+    const result = await tryWsUpgrade(wsUrl('/ws/nonexistent-room-fix099'));
+    // Same valid set — server should not return an unexpected status
+    const valid: Array<WsResult['statusOrUpgraded']> = ['upgraded', 400, 404, 502, 503];
+    expect(valid).toContain(result.statusOrUpgraded);
+  });
+
+  test('WS endpoint does not return 200 on upgrade request', async () => {
+    const result = await tryWsUpgrade(wsUrl('/ws/test-room'));
+    // 200 would mean the endpoint is ignoring the Upgrade header
+    expect(result.statusOrUpgraded).not.toBe(200);
   });
 });
