@@ -77,8 +77,13 @@ function App() {
   // Fetch rooms from backend API on mount
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/rooms`)
+    fetch(`${API_BASE}/api/rooms`, { headers: authHeader() })
       .then((res) => {
+        if (res.status === 401) {
+          clearToken();
+          navigate("/login", { replace: true });
+          return;
+        }
         if (!res.ok) {
           console.warn(`Failed to fetch rooms: ${res.status}`);
           if (!cancelled) setRooms([]);
@@ -107,7 +112,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [navigate]);
 
   // Extract members from messages
   const members: Member[] = (() => {
