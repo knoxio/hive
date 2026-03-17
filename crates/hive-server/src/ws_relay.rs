@@ -492,14 +492,33 @@ mod tests {
         }
     }
 
-    #[test]
-    fn connect_timeout_is_two_seconds() {
-        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(2));
+    #[tokio::test]
+    async fn connect_to_refused_address_returns_connection_error() {
+        // Port 1 on loopback is reserved and immediately refused by the OS,
+        // so this exercises the "connection failed" error path without waiting
+        // for the full CONNECT_TIMEOUT.
+        let result = connect_with_timeout("ws://127.0.0.1:1").await;
+        assert!(result.is_err(), "expected Err for refused port");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.starts_with("connection"),
+            "error should describe a connection problem, got: {msg}"
+        );
     }
 
-    #[test]
-    fn max_reconnect_attempts_is_five() {
-        assert_eq!(MAX_RECONNECT_ATTEMPTS, 5);
+    #[tokio::test]
+    async fn try_reconnect_returns_none_after_all_attempts_fail() {
+        // Use a tiny max_backoff so the 5 attempts complete quickly.
+        let config = DaemonWsConfig {
+            max_backoff: Duration::from_millis(1),
+            ..DaemonWsConfig::default()
+        };
+        // Port 1 on loopback refuses immediately, so all attempts exhaust fast.
+        let result = try_reconnect("ws://127.0.0.1:1", &config, None).await;
+        assert!(
+            result.is_none(),
+            "expected None after all reconnection attempts fail"
+        );
     }
 
     // -----------------------------------------------------------------------
