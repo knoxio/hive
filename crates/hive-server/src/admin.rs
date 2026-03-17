@@ -591,4 +591,326 @@ mod tests {
         });
         assert!(result.is_err());
     }
+
+    // -----------------------------------------------------------------------
+    // Handler-level tests (axum::Router::oneshot)
+    // -----------------------------------------------------------------------
+
+    use axum::body::{to_bytes, Body};
+    use axum::routing::{delete, get, patch, post};
+    use axum::Extension;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    fn make_test_state() -> std::sync::Arc<crate::AppState> {
+        std::sync::Arc::new(crate::AppState {
+            config: crate::config::HiveConfig::default(),
+            db: Database::open_memory().unwrap(),
+            jwt_secret: b"test-secret-must-be-long-enough-for-hmac".to_vec(),
+            jwt_ttl: 3600,
+            start_time: std::time::Instant::now(),
+        })
+    }
+
+    fn admin_claims(sub: &str) -> Claims {
+        Claims {
+            sub: sub.into(),
+            username: "admin".into(),
+            role: "admin".into(),
+            jti: uuid::Uuid::new_v4().to_string(),
+            iat: 0,
+            exp: u64::MAX,
+        }
+    }
+
+    fn user_claims(sub: &str) -> Claims {
+        Claims {
+            sub: sub.into(),
+            username: "regularuser".into(),
+            role: "user".into(),
+            jti: uuid::Uuid::new_v4().to_string(),
+            iat: 0,
+            exp: u64::MAX,
+        }
+    }
+
+    #[tokio::test]
+    async fn handler_list_users_returns_user_list() {
+        let state = make_test_state();
+        seed_admin(&state.db);
+        seed_user(&state.db, "alice");
+        let claims = admin_claims("1");
+        let app = Router::new()
+            .route("/api/admin/users", get(list_users))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("GET")
+            .uri("/api/admin/users")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), 8192).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["total"], 2);
+        assert!(json["users"].as_array().unwrap().len() >= 1);
+    }
+
+    #[tokio::test]
+    async fn handler_list_users_non_admin_returns_forbidden() {
+        let state = make_test_state();
+        let claims = user_claims("99");
+        let app = Router::new()
+            .route("/api/admin/users", get(list_users))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("GET")
+            .uri("/api/admin/users")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn handler_create_user_happy_path_returns_created() {
+        let state = make_test_state();
+        let claims = admin_claims("1");
+        let app = Router::new()
+            .route("/api/admin/users", post(create_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let payload =
+            serde_json::to_vec(&serde_json::json!({"username": "newbie", "password": "pass123"}))
+                .unwrap();
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/admin/users")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["username"], "newbie");
+        assert_eq!(json["role"], "user");
+        assert!(json["id"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn handler_create_user_duplicate_username_returns_conflict() {
+        let state = make_test_state();
+        seed_user(&state.db, "existing");
+        let claims = admin_claims("1");
+        let app = Router::new()
+            .route("/api/admin/users", post(create_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let payload =
+            serde_json::to_vec(&serde_json::json!({"username": "existing", "password": "pass"}))
+                .unwrap();
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/admin/users")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn handler_create_user_empty_username_returns_bad_request() {
+        let state = make_test_state();
+        let claims = admin_claims("1");
+        let app = Router::new()
+            .route("/api/admin/users", post(create_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let payload =
+            serde_json::to_vec(&serde_json::json!({"username": "", "password": "pass"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/admin/users")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn handler_create_user_non_admin_returns_forbidden() {
+        let state = make_test_state();
+        let claims = user_claims("99");
+        let app = Router::new()
+            .route("/api/admin/users", post(create_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let payload =
+            serde_json::to_vec(&serde_json::json!({"username": "x", "password": "y"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/admin/users")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn handler_patch_user_updates_role_to_admin() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        let user_id = seed_user(&state.db, "promote-me");
+        let claims = admin_claims(&admin_id.to_string());
+        let app = Router::new()
+            .route("/api/admin/users/{id}", patch(patch_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let payload = serde_json::to_vec(&serde_json::json!({"role": "admin"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/admin/users/{user_id}"))
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["role"], "admin");
+    }
+
+    #[tokio::test]
+    async fn handler_patch_user_last_admin_downgrade_returns_conflict() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        let claims = admin_claims(&admin_id.to_string());
+        let app = Router::new()
+            .route("/api/admin/users/{id}", patch(patch_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        // Only one admin — downgrading their role must fail.
+        let payload = serde_json::to_vec(&serde_json::json!({"role": "user"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/admin/users/{admin_id}"))
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn handler_patch_user_nonexistent_returns_not_found() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        let claims = admin_claims(&admin_id.to_string());
+        let app = Router::new()
+            .route("/api/admin/users/{id}", patch(patch_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let payload = serde_json::to_vec(&serde_json::json!({"role": "user"})).unwrap();
+        let req = axum::http::Request::builder()
+            .method("PATCH")
+            .uri("/api/admin/users/99999")
+            .header("content-type", "application/json")
+            .body(Body::from(payload))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn handler_delete_user_returns_no_content() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        // Add a second admin so the first can be deleted (last-admin guard).
+        let hash = bcrypt::hash("pass2", 4).unwrap();
+        let victim_id = state
+            .db
+            .with_conn(|conn| {
+                conn.execute(
+                    "INSERT INTO local_users (username, password_hash, role) VALUES ('admin2', ?1, 'admin')",
+                    [&hash],
+                )?;
+                Ok(conn.last_insert_rowid())
+            })
+            .unwrap();
+        let claims = admin_claims(&admin_id.to_string());
+        let app = Router::new()
+            .route("/api/admin/users/{id}", delete(delete_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/admin/users/{victim_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn handler_delete_user_self_deletion_returns_conflict() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        // Caller sub matches the target user_id — self-delete must be rejected.
+        let claims = admin_claims(&admin_id.to_string());
+        let app = Router::new()
+            .route("/api/admin/users/{id}", delete(delete_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/admin/users/{admin_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn handler_delete_user_last_admin_returns_conflict() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        // A different caller (different sub) tries to delete the only admin.
+        let claims = admin_claims("999");
+        let app = Router::new()
+            .route("/api/admin/users/{id}", delete(delete_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/admin/users/{admin_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn handler_delete_user_nonexistent_returns_not_found() {
+        let state = make_test_state();
+        let admin_id = seed_admin(&state.db);
+        let claims = admin_claims("999");
+        let app = Router::new()
+            .route("/api/admin/users/{id}", delete(delete_user))
+            .with_state(std::sync::Arc::clone(&state))
+            .layer(Extension(claims));
+        let req = axum::http::Request::builder()
+            .method("DELETE")
+            .uri("/api/admin/users/99999")
+            .body(Body::empty())
+            .unwrap();
+        let _ = admin_id; // used for db seeding only
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
 }
