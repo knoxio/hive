@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::HiveError;
+use crate::util::{unix_now, unix_secs_to_sqlite_datetime};
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -378,50 +379,6 @@ pub fn seed_admin_user(db: &crate::db::Database) {
         Ok(_) => tracing::info!(username = %username, "admin user already exists"),
         Err(e) => tracing::error!("failed to seed admin user: {e}"),
     }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-/// Format a Unix epoch (seconds) as "YYYY-MM-DD HH:MM:SS" for SQLite storage.
-fn unix_secs_to_sqlite_datetime(secs: u64) -> String {
-    // Manual ISO 8601 UTC formatting without external crates.
-    // Days since epoch → Gregorian calendar decomposition.
-    let total_secs = secs;
-    let s = total_secs % 60;
-    let total_mins = total_secs / 60;
-    let m = total_mins % 60;
-    let total_hours = total_mins / 60;
-    let h = total_hours % 24;
-    let days = total_hours / 24;
-
-    // Gregorian calendar calculation (valid for Unix epoch dates).
-    let (year, month, day) = days_to_ymd(days);
-    format!("{year:04}-{month:02}-{day:02} {h:02}:{m:02}:{s:02}")
-}
-
-/// Convert days-since-Unix-epoch to (year, month, day).
-fn days_to_ymd(days: u64) -> (u64, u64, u64) {
-    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
-    let z = days + 719468;
-    let era = z / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
 }
 
 // ---------------------------------------------------------------------------
