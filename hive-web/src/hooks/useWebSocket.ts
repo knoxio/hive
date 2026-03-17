@@ -134,7 +134,11 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
   const sendMessage = useCallback(
     (content: string) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(content);
+        // Send as a JSON envelope so the room daemon can distinguish message
+        // types (message, dm, command) without heuristics. Plain text is also
+        // accepted by the daemon, but the JSON format is explicit and allows
+        // future type additions (DM, commands) without protocol changes.
+        wsRef.current.send(JSON.stringify({ type: 'message', content }));
       }
     },
     [],
