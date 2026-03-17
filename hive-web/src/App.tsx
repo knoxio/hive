@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { RoomList } from "./components/RoomList";
 import { CreateRoomModal } from "./components/CreateRoomModal";
@@ -69,6 +69,10 @@ function App() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showDeleteRoom, setShowDeleteRoom] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  /** API-fetched member list (offline baseline). Refreshed on room selection. */
+  const [apiMembers, setApiMembers] = useState<Member[]>([]);
+  /** Ref to track which room the apiMembers were fetched for (avoids stale overwrites). */
+  const apiMemberRoomRef = useRef<string | null>(null);
 
   /** Invalidate the server-side token and clear local auth state. */
   const handleLogout = useCallback(async () => {
@@ -137,21 +141,82 @@ function App() {
     };
   }, [navigate]);
 
-  // Extract members from messages
+  // Fetch API members when room selection changes (MH-020).
+  useEffect(() => {
+    if (!selectedRoomId) {
+      setApiMembers([]);
+      apiMemberRoomRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    apiMemberRoomRef.current = selectedRoomId;
+    fetch(`${API_BASE}/api/rooms/${selectedRoomId}/members`, {
+      headers: authHeader(),
+    })
+      .then((res) => {
+        if (!res.ok) return [];
+        return res.json() as Promise<{
+          members: Array<{
+            username: string;
+            display_name: string | null;
+            role: string;
+            presence: string;
+          }>;
+        }>;
+      })
+      .then((data) => {
+        if (cancelled || apiMemberRoomRef.current !== selectedRoomId) return;
+        const list = Array.isArray(data) ? [] : (data.members ?? []);
+        setApiMembers(
+          list.map((m) => ({
+            username: m.username,
+            displayName: m.display_name ?? undefined,
+            status: m.presence === "online" ? "online" : undefined,
+            isAgent: /^(coder-|scout-|ba|r2d2|wall-e|saphire|bumblebee|sonnet-)/.test(
+              m.username
+            ),
+            role: m.role,
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setApiMembers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRoomId]);
+
+  // Derive online members from WS messages — used as presence overlay over API baseline.
+  const wsOnlineUsernames = new Set<string>();
+  for (const msg of messages) {
+    if (msg.user && msg.type !== "system") {
+      wsOnlineUsernames.add(msg.user);
+    }
+  }
+
+  // Merge: start from API baseline, overlay WS online presence.
+  // Users seen in WS but absent from API list are appended (they joined after fetch).
   const members: Member[] = (() => {
-    const seen = new Map<string, Member>();
-    for (const msg of messages) {
-      if (msg.user && !seen.has(msg.user)) {
-        seen.set(msg.user, {
-          username: msg.user,
-          status: msg.type === "system" ? undefined : "online",
+    const merged = new Map<string, Member>();
+    for (const m of apiMembers) {
+      merged.set(m.username, {
+        ...m,
+        status: wsOnlineUsernames.has(m.username) ? "online" : m.status,
+      });
+    }
+    for (const username of wsOnlineUsernames) {
+      if (!merged.has(username)) {
+        merged.set(username, {
+          username,
+          status: "online",
           isAgent: /^(coder-|scout-|ba|r2d2|wall-e|saphire|bumblebee|sonnet-)/.test(
-            msg.user
+            username
           ),
         });
       }
     }
-    return Array.from(seen.values());
+    return Array.from(merged.values());
   })();
 
   // Handle room selection — close settings panel when switching rooms.
@@ -159,6 +224,7 @@ function App() {
     (roomId: string) => {
       if (roomId !== selectedRoomId) {
         clearMessages();
+        setApiMembers([]);
         setSelectedRoomId(roomId);
         setShowSettings(false);
       }
@@ -187,6 +253,7 @@ function App() {
       return [{ id: roomId, name: roomId, unreadCount: 0 }, ...prev];
     });
     clearMessages();
+    setApiMembers([]);
     setSelectedRoomId(roomId);
     setShowCreateRoom(false);
   }, [clearMessages]);
@@ -195,6 +262,7 @@ function App() {
   const handleRoomDeleted = useCallback(() => {
     setRooms((prev) => prev.filter((r) => r.id !== selectedRoomId));
     clearMessages();
+    setApiMembers([]);
     setSelectedRoomId(null);
     setShowDeleteRoom(false);
   }, [selectedRoomId, clearMessages]);
