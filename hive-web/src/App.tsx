@@ -213,6 +213,15 @@ function App() {
             </a>
           )}
           <button
+            onClick={() => navigate("/settings/preferences")}
+            data-testid="preferences-nav-button"
+            className="px-3 py-1 rounded text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+            aria-label="Preferences"
+            title="Preferences"
+          >
+            ⚙
+          </button>
+          <button
             onClick={() => navigate("/profile")}
             data-testid="profile-nav-button"
             className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold hover:bg-blue-500 transition-colors select-none"

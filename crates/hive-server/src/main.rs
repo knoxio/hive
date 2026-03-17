@@ -4,6 +4,7 @@ mod config;
 pub mod daemon;
 pub mod db;
 pub mod error;
+pub mod preferences;
 mod rest_proxy;
 pub mod rooms;
 pub mod settings;
@@ -127,6 +128,10 @@ async fn main() {
     let protected_routes = Router::new()
         .route("/api/auth/me", get(auth::me))
         .route("/api/users/me", get(users::me))
+        .route(
+            "/api/users/me/preferences",
+            get(preferences::get_preferences).patch(preferences::patch_preferences),
+        )
         .route("/api/auth/logout", post(auth::logout))
         .route(
             "/api/admin/users",

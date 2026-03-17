@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 /// Schema version — bump when adding new migrations.
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 /// SQL statements for schema v1.
 const SCHEMA_V1: &str = r#"
@@ -102,6 +102,15 @@ CREATE TABLE IF NOT EXISTS app_settings_history (
 /// SQL statements for schema v5 — user management fields.
 const SCHEMA_V5: &str = r#"
 ALTER TABLE local_users ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+"#;
+
+/// SQL statements for schema v6 — per-user preferences.
+const SCHEMA_V6: &str = r#"
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id    INTEGER PRIMARY KEY REFERENCES local_users(id) ON DELETE CASCADE,
+    prefs_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 "#;
 
 /// A row from `app_settings_history`.
@@ -200,6 +209,12 @@ impl Database {
             tracing::info!("database migrated to schema v5");
         }
 
+        if current < 6 {
+            conn.execute_batch(SCHEMA_V6)?;
+            conn.execute("INSERT INTO _migrations (version) VALUES (6)", [])?;
+            tracing::info!("database migrated to schema v6");
+        }
+
         let final_version: i64 = conn.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM _migrations",
             [],
@@ -273,6 +288,36 @@ impl Database {
                 rusqlite::params![key, old_value, value, changed_by],
             )?;
 
+            Ok(())
+        })
+    }
+
+    /// Return the stored preferences JSON for `user_id`, or `"{}"` if none set.
+    pub fn get_user_prefs(&self, user_id: i64) -> Result<String, rusqlite::Error> {
+        self.with_conn(|conn| {
+            match conn.query_row(
+                "SELECT prefs_json FROM user_preferences WHERE user_id = ?1",
+                [user_id],
+                |row| row.get(0),
+            ) {
+                Ok(v) => Ok(v),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_owned()),
+                Err(e) => Err(e),
+            }
+        })
+    }
+
+    /// Upsert (replace) the preferences JSON for `user_id`.
+    pub fn set_user_prefs(&self, user_id: i64, prefs_json: &str) -> Result<(), rusqlite::Error> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO user_preferences (user_id, prefs_json, updated_at) \
+                 VALUES (?1, ?2, datetime('now')) \
+                 ON CONFLICT(user_id) DO UPDATE SET \
+                     prefs_json = excluded.prefs_json, \
+                     updated_at = excluded.updated_at",
+                rusqlite::params![user_id, prefs_json],
+            )?;
             Ok(())
         })
     }

@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { LoginPage } from './components/LoginPage.tsx'
+import { PreferencesPage } from './components/PreferencesPage.tsx'
 import { ProfilePage } from './components/ProfilePage.tsx'
 import { RequireAuth } from './components/RequireAuth.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
@@ -35,6 +36,14 @@ createRoot(document.getElementById('root')!).render(
               element={
                 <RequireAuth>
                   <ProfilePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings/preferences"
+              element={
+                <RequireAuth>
+                  <PreferencesPage />
                 </RequireAuth>
               }
             />
