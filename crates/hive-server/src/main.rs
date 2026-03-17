@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 mod rest_proxy;
 pub mod settings;
+pub mod users;
 mod ws_relay;
 
 use std::path::PathBuf;
@@ -123,6 +124,7 @@ async fn main() {
     // Protected routes — require valid Bearer JWT.
     let protected_routes = Router::new()
         .route("/api/auth/me", get(auth::me))
+        .route("/api/users/me", get(users::me))
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/rooms", get(rest_proxy::list_rooms))
         .route("/api/rooms/{room_id}", get(rest_proxy::get_room))
