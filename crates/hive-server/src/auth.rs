@@ -298,6 +298,33 @@ pub(crate) async fn auth_middleware(
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/auth/me
+// ---------------------------------------------------------------------------
+
+/// Response body for `GET /api/auth/me`.
+#[derive(Serialize)]
+pub struct MeResponse {
+    pub sub: String,
+    pub username: String,
+    pub role: String,
+    /// Token expiry as Unix seconds.
+    pub exp: u64,
+}
+
+/// `GET /api/auth/me` — return the authenticated user's identity from the JWT.
+///
+/// Requires a valid Bearer token (enforced by `auth_middleware`).  The claims
+/// are already decoded and attached to the request extensions by the middleware.
+pub(crate) async fn me(axum::Extension(claims): axum::Extension<Claims>) -> Json<MeResponse> {
+    Json(MeResponse {
+        sub: claims.sub,
+        username: claims.username,
+        role: claims.role,
+        exp: claims.exp,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Admin user seeding
 // ---------------------------------------------------------------------------
 
@@ -591,5 +618,22 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    #[test]
+    fn me_response_fields_from_claims() {
+        // Verify MeResponse serializes the expected fields from Claims.
+        let claims = make_claims(3600);
+        let response = MeResponse {
+            sub: claims.sub.clone(),
+            username: claims.username.clone(),
+            role: claims.role.clone(),
+            exp: claims.exp,
+        };
+        assert_eq!(response.sub, claims.sub);
+        assert_eq!(response.username, claims.username);
+        assert_eq!(response.role, claims.role);
+        assert_eq!(response.exp, claims.exp);
+        assert!(response.exp > 0);
     }
 }

@@ -1,8 +1,10 @@
 /**
- * Login page at /login (MH-007).
+ * Login page at /login (MH-007, MH-008).
  *
  * Username + password form that calls POST /api/auth/login, stores the
  * returned JWT, and redirects to the originally requested URL (or /).
+ * Shows a "Session expired" banner when redirected from a protected route
+ * with an expired or revoked token.
  */
 
 import { type FormEvent, useState } from 'react';
@@ -35,8 +37,10 @@ export function LoginPage() {
 
   // After login, restore the originally requested URL or fall back to /
   const from = (location.state as { from?: Location } | null)?.from?.pathname ?? '/';
+  const sessionExpired =
+    (location.state as { sessionExpired?: boolean } | null)?.sessionExpired ?? false;
 
-  return <LoginForm from={from} navigate={navigate} />;
+  return <LoginForm from={from} navigate={navigate} sessionExpired={sessionExpired} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,9 +50,10 @@ export function LoginPage() {
 interface LoginFormProps {
   from: string;
   navigate: ReturnType<typeof useNavigate>;
+  sessionExpired: boolean;
 }
 
-function LoginForm({ from, navigate }: LoginFormProps) {
+function LoginForm({ from, navigate, sessionExpired }: LoginFormProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -96,6 +101,17 @@ function LoginForm({ from, navigate }: LoginFormProps) {
       data-testid="login-page"
     >
       <div className="bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-sm">
+        {/* Session expired banner */}
+        {sessionExpired && (
+          <div
+            role="alert"
+            data-testid="session-expired-banner"
+            className="mb-4 rounded-md bg-yellow-900 border border-yellow-700 px-3 py-2 text-sm text-yellow-200"
+          >
+            Your session has expired. Please sign in again.
+          </div>
+        )}
+
         {/* Header */}
         <h1 className="text-2xl font-bold text-white mb-1">Hive</h1>
         <p className="text-gray-400 text-sm mb-6">Sign in to continue</p>
