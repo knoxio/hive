@@ -162,6 +162,7 @@ async fn main() {
                 .patch(rooms::patch_room)
                 .delete(rooms::delete_room),
         )
+        .route("/api/rooms/{room_id}/members", get(rooms::get_room_members))
         .route(
             "/api/rooms/{room_id}/messages",
             get(rest_proxy::get_messages),
