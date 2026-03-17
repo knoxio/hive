@@ -1,4 +1,4 @@
-//! Room management API — MH-016 (list rooms) and MH-014 (create room).
+//! Room management API — MH-016 (list rooms), MH-014 (create room), MH-015 (delete room).
 //!
 //! Rooms are stored in Hive's DB (`workspace_rooms` table, scoped to a
 //! workspace). This module replaces the placeholder `list_rooms` stub in
@@ -9,7 +9,12 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
@@ -219,6 +224,39 @@ pub async fn create_room(
     }
 }
 
+/// `DELETE /api/rooms/:room_id` — remove a room from the database.
+///
+/// Hard-deletes the `workspace_rooms` row. Returns 204 on success, 404 if the
+/// room does not exist.
+pub async fn delete_room(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+) -> impl IntoResponse {
+    let result = state.db.with_conn(|conn| {
+        let rows = conn.execute(
+            "DELETE FROM workspace_rooms WHERE room_id = ?1",
+            rusqlite::params![room_id],
+        )?;
+        Ok(rows)
+    });
+
+    match result {
+        Ok(0) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "room not found"})),
+        )
+            .into_response(),
+        Ok(_) => {
+            tracing::info!(room_id = %room_id, "room deleted");
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => {
+            tracing::error!("failed to delete room '{room_id}': {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -317,5 +355,77 @@ mod tests {
             .unwrap();
 
         assert_eq!(room_id, "room-dev");
+    }
+
+    #[test]
+    fn delete_existing_room_returns_one() {
+        let db = crate::db::Database::open_memory().unwrap();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO users (provider, provider_id) VALUES ('test', '1')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO workspaces (name, owner_id) VALUES ('default', 1)",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO workspace_rooms (workspace_id, room_id) VALUES (1, 'to-delete')",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let rows = db
+            .with_conn(|conn| {
+                conn.execute(
+                    "DELETE FROM workspace_rooms WHERE room_id = ?1",
+                    rusqlite::params!["to-delete"],
+                )
+            })
+            .unwrap();
+
+        assert_eq!(rows, 1);
+
+        // Room is gone
+        let count: i64 = db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM workspace_rooms WHERE room_id = 'to-delete'",
+                    [],
+                    |row| row.get(0),
+                )
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn delete_nonexistent_room_returns_zero() {
+        let db = crate::db::Database::open_memory().unwrap();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO users (provider, provider_id) VALUES ('test', '1')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO workspaces (name, owner_id) VALUES ('default', 1)",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let rows = db
+            .with_conn(|conn| {
+                conn.execute(
+                    "DELETE FROM workspace_rooms WHERE room_id = ?1",
+                    rusqlite::params!["does-not-exist"],
+                )
+            })
+            .unwrap();
+
+        assert_eq!(rows, 0);
     }
 }
