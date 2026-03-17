@@ -38,6 +38,12 @@ interface UseWebSocketReturn {
   disconnect: () => void;
   /** Clear the message buffer */
   clearMessages: () => void;
+  /** Current reconnect attempt count (0 while connected) */
+  retryCount: number;
+  /** Epoch ms when the next reconnect attempt fires, or null if not reconnecting */
+  retryAt: number | null;
+  /** Timestamp of the last successful connection, or null if never connected */
+  lastConnectedAt: Date | null;
 }
 
 /**
@@ -45,6 +51,9 @@ interface UseWebSocketReturn {
  *
  * Handles connection lifecycle, automatic reconnection with exponential
  * backoff, message parsing, and connection state tracking.
+ *
+ * In addition to the core `status`, exposes `retryCount`, `retryAt`, and
+ * `lastConnectedAt` to power rich connection status UIs (MH-026).
  */
 export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
   const {
@@ -57,6 +66,10 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
 
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [messages, setMessages] = useState<RoomMessage[]>([]);
+  const [retryCount, setRetryCount] = useState(0);
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const [lastConnectedAt, setLastConnectedAt] = useState<Date | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -68,12 +81,17 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
 
     retriesRef.current = 0;
     setStatus('connecting');
+    setRetryCount(0);
+    setRetryAt(null);
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setStatus('connected');
+      setLastConnectedAt(new Date());
+      setRetryCount(0);
+      setRetryAt(null);
       retriesRef.current = 0;
     };
 
@@ -90,6 +108,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
       wsRef.current = null;
       if (event.code === 1000 || retriesRef.current >= maxRetries) {
         setStatus('disconnected');
+        setRetryAt(null);
         return;
       }
 
@@ -98,13 +117,17 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
         maxDelay,
       );
       retriesRef.current += 1;
+      const nextRetryAt = Date.now() + delay;
       setStatus('connecting');
+      setRetryCount(retriesRef.current);
+      setRetryAt(nextRetryAt);
 
       retryTimeoutRef.current = setTimeout(() => {
         if (retriesRef.current < maxRetries) {
           connectRef.current();
         } else {
           setStatus('disconnected');
+          setRetryAt(null);
         }
       }, delay);
     };
@@ -129,6 +152,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
       wsRef.current = null;
     }
     setStatus('disconnected');
+    setRetryAt(null);
   }, [maxRetries]);
 
   const sendMessage = useCallback(
@@ -164,5 +188,15 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
     };
   }, [autoConnect]);
 
-  return { status, messages, sendMessage, connect, disconnect, clearMessages };
+  return {
+    status,
+    messages,
+    sendMessage,
+    connect,
+    disconnect,
+    clearMessages,
+    retryCount,
+    retryAt,
+    lastConnectedAt,
+  };
 }
