@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod auth;
 mod config;
 pub mod daemon;
@@ -127,6 +128,14 @@ async fn main() {
         .route("/api/auth/me", get(auth::me))
         .route("/api/users/me", get(users::me))
         .route("/api/auth/logout", post(auth::logout))
+        .route(
+            "/api/admin/users",
+            get(admin::list_users).post(admin::create_user),
+        )
+        .route(
+            "/api/admin/users/{id}",
+            axum::routing::patch(admin::patch_user).delete(admin::delete_user),
+        )
         .route(
             "/api/rooms",
             get(rooms::list_rooms).post(rooms::create_room),
