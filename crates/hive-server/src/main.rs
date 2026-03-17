@@ -114,7 +114,10 @@ async fn main() {
             get(rest_proxy::get_messages),
         )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
-        .route("/api/settings", get(settings::get_settings).patch(settings::patch_settings))
+        .route(
+            "/api/settings",
+            get(settings::get_settings).patch(settings::patch_settings),
+        )
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .with_state(state)
         .layer(
