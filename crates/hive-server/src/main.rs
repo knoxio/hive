@@ -4,6 +4,7 @@ pub mod daemon;
 pub mod db;
 pub mod error;
 mod rest_proxy;
+pub mod settings;
 mod ws_relay;
 
 use std::path::PathBuf;
@@ -17,7 +18,7 @@ use config::HiveConfig;
 use tower_http::cors::{Any, CorsLayer};
 
 /// Shared application state.
-struct AppState {
+pub struct AppState {
     config: HiveConfig,
     #[allow(dead_code)]
     db: db::Database,
@@ -90,6 +91,10 @@ async fn main() {
     let db = db::Database::open(&db_path).expect("failed to open database");
     tracing::info!("database opened at {}", db_path.display());
 
+    // Seed default settings (no-op if already seeded)
+    let daemon_url = settings::resolve_daemon_url(&config.daemon.ws_url);
+    settings::seed_defaults(&db, &daemon_url);
+
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("hive-server starting on {bind_addr}");
 
@@ -109,6 +114,10 @@ async fn main() {
             get(rest_proxy::get_messages),
         )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
+        .route(
+            "/api/settings",
+            get(settings::get_settings).patch(settings::patch_settings),
+        )
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .with_state(state)
         .layer(
