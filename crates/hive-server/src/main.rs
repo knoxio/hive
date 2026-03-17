@@ -4,6 +4,7 @@ pub mod daemon;
 pub mod db;
 pub mod error;
 mod rest_proxy;
+mod settings;
 mod ws_relay;
 
 use std::path::PathBuf;
@@ -93,6 +94,17 @@ async fn main() {
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("hive-server starting on {bind_addr}");
 
+    // Seed daemon_url into app_settings on first run (no-op if already set).
+    match db.get_setting("daemon_url") {
+        Ok(None) => {
+            if let Err(e) = db.set_setting("daemon_url", &config.daemon.ws_url, "system") {
+                tracing::warn!("failed to seed daemon_url setting: {e}");
+            }
+        }
+        Ok(Some(_)) => {} // already configured — preserve the stored value
+        Err(e) => tracing::warn!("failed to read daemon_url setting: {e}"),
+    }
+
     let state = Arc::new(AppState {
         config,
         db,
@@ -110,6 +122,11 @@ async fn main() {
         )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
+        .route(
+            "/api/settings",
+            get(settings::get_settings).patch(settings::patch_settings),
+        )
+        .route("/api/settings/history", get(settings::get_settings_history))
         .with_state(state)
         .layer(
             CorsLayer::new()
