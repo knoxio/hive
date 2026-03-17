@@ -10,6 +10,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 import type { Room } from "./components/RoomList";
 import type { Member } from "./components/MemberPanel";
+import { authHeader, clearToken } from "./lib/auth";
 
 type Tab = "rooms" | "agents" | "tasks" | "costs";
 const TABS: Tab[] = ["rooms", "agents", "tasks", "costs"];
@@ -48,6 +49,23 @@ function App() {
 
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  /** Invalidate the server-side token and clear local auth state. */
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: authHeader(),
+      });
+    } catch {
+      // Ignore — local state is always cleared regardless.
+    } finally {
+      clearToken();
+      navigate("/login", { replace: true });
+    }
+  }, [navigate]);
 
   // WebSocket connection to the selected room
   const wsUrl = selectedRoomId ? `${WS_BASE}/ws/${selectedRoomId}` : "";
@@ -165,8 +183,17 @@ function App() {
             {tab}
           </button>
         ))}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
           <StatusDot status={status} />
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            data-testid="logout-button"
+            className="px-3 py-1 rounded text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label="Log out"
+          >
+            {loggingOut ? "Logging out…" : "Log out"}
+          </button>
         </div>
       </nav>
 

@@ -168,6 +168,52 @@ pub(crate) async fn login(
 }
 
 // ---------------------------------------------------------------------------
+// Logout handler
+// ---------------------------------------------------------------------------
+
+/// Response body for a successful logout.
+#[derive(Serialize)]
+pub struct LogoutResponse {
+    pub message: &'static str,
+}
+
+/// `POST /api/auth/logout` — revoke the current JWT by adding its `jti` to
+/// `revoked_tokens`. The token remains cryptographically valid but will be
+/// rejected by `auth_middleware` on every subsequent request.
+///
+/// Always returns 200; the client must clear its local token regardless.
+pub(crate) async fn logout(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Extension(claims): axum::extract::Extension<Claims>,
+) -> Result<Json<LogoutResponse>, HiveError> {
+    // Store expires_at as "YYYY-MM-DD HH:MM:SS" (SQLite datetime format).
+    let expires_at_str = unix_secs_to_sqlite_datetime(claims.exp);
+
+    let db = state.db.clone();
+    let jti = claims.jti.clone();
+    let sub = claims.sub.clone();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at) \
+                 VALUES (?1, ?2, ?3)",
+                rusqlite::params![jti, sub, expires_at_str],
+            )?;
+            Ok::<_, rusqlite::Error>(())
+        })
+    })
+    .await
+    .map_err(|e| HiveError::Internal(format!("task join error: {e}")))?
+    .map_err(|e| HiveError::Internal(format!("db error: {e}")))?;
+
+    tracing::info!(jti = %claims.jti, username = %claims.username, "logout — token revoked");
+
+    Ok(Json(LogoutResponse {
+        message: "logged out",
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Token validation
 // ---------------------------------------------------------------------------
 
@@ -303,6 +349,39 @@ fn unix_now() -> u64 {
         .as_secs()
 }
 
+/// Format a Unix epoch (seconds) as "YYYY-MM-DD HH:MM:SS" for SQLite storage.
+fn unix_secs_to_sqlite_datetime(secs: u64) -> String {
+    // Manual ISO 8601 UTC formatting without external crates.
+    // Days since epoch → Gregorian calendar decomposition.
+    let total_secs = secs;
+    let s = total_secs % 60;
+    let total_mins = total_secs / 60;
+    let m = total_mins % 60;
+    let total_hours = total_mins / 60;
+    let h = total_hours % 24;
+    let days = total_hours / 24;
+
+    // Gregorian calendar calculation (valid for Unix epoch dates).
+    let (year, month, day) = days_to_ymd(days);
+    format!("{year:04}-{month:02}-{day:02} {h:02}:{m:02}:{s:02}")
+}
+
+/// Convert days-since-Unix-epoch to (year, month, day).
+fn days_to_ymd(days: u64) -> (u64, u64, u64) {
+    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
+    let z = days + 719468;
+    let era = z / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -421,5 +500,96 @@ mod tests {
     fn valid_secret_is_accepted() {
         let ok = b"exactly-32-bytes-of-secret-key!!";
         assert!(ok.len() >= 32);
+    }
+
+    // -----------------------------------------------------------------------
+    // datetime helper tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn unix_epoch_formats_correctly() {
+        // Unix epoch 0 = 1970-01-01 00:00:00
+        assert_eq!(unix_secs_to_sqlite_datetime(0), "1970-01-01 00:00:00");
+    }
+
+    #[test]
+    fn known_timestamp_formats_correctly() {
+        // 2021-01-01 00:00:00 UTC = 1609459200
+        assert_eq!(
+            unix_secs_to_sqlite_datetime(1609459200),
+            "2021-01-01 00:00:00"
+        );
+    }
+
+    #[test]
+    fn leap_year_date_formats_correctly() {
+        // 2024-02-29 00:00:00 UTC (leap day) = 1709164800
+        assert_eq!(
+            unix_secs_to_sqlite_datetime(1709164800),
+            "2024-02-29 00:00:00"
+        );
+    }
+
+    #[test]
+    fn datetime_string_has_correct_length() {
+        let s = unix_secs_to_sqlite_datetime(unix_now());
+        assert_eq!(
+            s.len(),
+            19,
+            "expected 'YYYY-MM-DD HH:MM:SS' (19 chars), got: {s}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // revoked_tokens DB integration test
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn revoked_token_inserted_into_db() {
+        let db = crate::db::Database::open_memory().unwrap();
+        let jti = "test-jti-12345";
+        let expires_at = unix_secs_to_sqlite_datetime(unix_now() + 3600);
+
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO revoked_tokens (jti, user_id, expires_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![jti, "1", expires_at],
+            )?;
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?1",
+                [jti],
+                |row| row.get(0),
+            )?;
+            assert_eq!(count, 1);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn insert_or_ignore_duplicate_jti() {
+        let db = crate::db::Database::open_memory().unwrap();
+        let jti = "duplicate-jti";
+        let expires_at = unix_secs_to_sqlite_datetime(unix_now() + 3600);
+
+        db.with_conn(|conn| {
+            // Insert twice — second should be silently ignored.
+            conn.execute(
+                "INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![jti, "1", expires_at],
+            )?;
+            conn.execute(
+                "INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![jti, "1", expires_at],
+            )?;
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?1",
+                [jti],
+                |row| row.get(0),
+            )?;
+            assert_eq!(count, 1, "duplicate jti must not be inserted twice");
+            Ok(())
+        })
+        .unwrap();
     }
 }
