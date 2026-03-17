@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use config::HiveConfig;
@@ -114,10 +114,9 @@ async fn main() {
             get(rest_proxy::get_messages),
         )
         .route("/api/rooms/{room_id}/send", post(rest_proxy::send_message))
-        .route(
-            "/api/settings",
-            get(settings::get_settings).patch(settings::patch_settings),
-        )
+        .route("/api/settings", get(settings::get_settings))
+        .route("/api/settings", patch(settings::patch_settings))
+        .route("/api/settings/history", get(settings::get_settings_history))
         .route("/ws/{room_id}", get(ws_relay::ws_handler))
         .with_state(state)
         .layer(
