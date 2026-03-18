@@ -175,6 +175,16 @@ pub async fn get_messages(
     }))
 }
 
+/// Validate that the `content` field in a send-message body is a non-empty
+/// string. Returns `Err(BAD_REQUEST)` if missing or empty so the proxy never
+/// forwards invalid payloads to the daemon.
+fn validate_send_body(body: &Value) -> Result<(), StatusCode> {
+    match body.get("content").and_then(Value::as_str) {
+        Some(s) if !s.is_empty() => Ok(()),
+        _ => Err(StatusCode::BAD_REQUEST),
+    }
+}
+
 /// POST /api/rooms/:room_id/send — send a message to a room.
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
@@ -182,6 +192,8 @@ pub async fn send_message(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
+    validate_send_body(&body)?;
+
     let base = daemon_base(&state);
     let url = format!("{base}/api/{room_id}/send");
 
@@ -298,5 +310,52 @@ mod tests {
         let (page, has_more) = paginate(&msgs, None, 50);
         assert_eq!(page.len(), 5);
         assert!(!has_more);
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_send_body tests (MH-021)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn send_body_valid_content_accepted() {
+        assert!(validate_send_body(&json!({"content": "hello"})).is_ok());
+    }
+
+    #[test]
+    fn send_body_unicode_content_accepted() {
+        assert!(validate_send_body(&json!({"content": "日本語 🎉"})).is_ok());
+    }
+
+    #[test]
+    fn send_body_missing_content_rejected() {
+        assert_eq!(
+            validate_send_body(&json!({})),
+            Err(StatusCode::BAD_REQUEST)
+        );
+    }
+
+    #[test]
+    fn send_body_empty_content_rejected() {
+        assert_eq!(
+            validate_send_body(&json!({"content": ""})),
+            Err(StatusCode::BAD_REQUEST)
+        );
+    }
+
+    #[test]
+    fn send_body_non_string_content_rejected() {
+        assert_eq!(
+            validate_send_body(&json!({"content": 42})),
+            Err(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            validate_send_body(&json!({"content": null})),
+            Err(StatusCode::BAD_REQUEST)
+        );
+    }
+
+    #[test]
+    fn send_body_extra_fields_do_not_affect_validation() {
+        assert!(validate_send_body(&json!({"content": "hi", "room_id": "test", "user": "alice"})).is_ok());
     }
 }
