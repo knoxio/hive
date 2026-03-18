@@ -7,12 +7,32 @@
 
 import { test, expect } from '@playwright/test';
 
+/** Build a minimal but structurally valid JWT (header.payload.sig). */
+function makeToken(
+  opts: { sub?: string; username?: string; role?: string; exp?: number } = {},
+): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: opts.sub ?? '1',
+      username: opts.username ?? 'admin',
+      role: opts.role ?? 'admin',
+      exp: opts.exp ?? 9_999_999_999,
+    }),
+  ).toString('base64url');
+  return `${header}.${payload}.fake-sig`;
+}
+
+/** A valid JWT that survives isTokenExpired() so RequireAuth lets the user through. */
+const VALID_TOKEN = makeToken();
+const MOCK_USER = { sub: '1', username: 'admin', role: 'admin', exp: 9_999_999_999 };
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /** Mock a successful login response. */
-async function mockLoginSuccess(page: import('@playwright/test').Page, token = 'test-jwt-token') {
+async function mockLoginSuccess(page: import('@playwright/test').Page, token = VALID_TOKEN) {
   await page.route('**/api/auth/login', (route) =>
     route.fulfill({
       status: 200,
@@ -124,7 +144,12 @@ test.describe('MH-007: Password show/hide toggle', () => {
 test.describe('MH-007: Successful login', () => {
   test('successful login stores token and navigates to /', async ({ page }) => {
     await clearAuth(page);
-    await mockLoginSuccess(page, 'my-jwt');
+    await mockLoginSuccess(page, VALID_TOKEN);
+    // SetupGuard and AuthProvider run after login redirects to /
+    await page.route('**/api/setup/status', (r) =>
+      r.fulfill({ json: { setup_complete: true, has_admin: true } }),
+    );
+    await page.route('**/api/auth/me', (r) => r.fulfill({ json: MOCK_USER }));
     await page.route('**/api/rooms', (r) =>
       r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [] }) }),
     );
@@ -136,7 +161,7 @@ test.describe('MH-007: Successful login', () => {
 
     await expect(page).toHaveURL('/');
     const token = await page.evaluate(() => localStorage.getItem('hive-auth-token'));
-    expect(token).toBe('my-jwt');
+    expect(token).toBe(VALID_TOKEN);
   });
 
   test('login form shows loading state while request is in flight', async ({ page }) => {
@@ -167,6 +192,10 @@ test.describe('MH-007: Successful login', () => {
   test('Enter key submits the form', async ({ page }) => {
     await clearAuth(page);
     await mockLoginSuccess(page);
+    await page.route('**/api/setup/status', (r) =>
+      r.fulfill({ json: { setup_complete: true, has_admin: true } }),
+    );
+    await page.route('**/api/auth/me', (r) => r.fulfill({ json: MOCK_USER }));
     await page.route('**/api/rooms', (r) =>
       r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [] }) }),
     );
@@ -225,12 +254,18 @@ test.describe('MH-007: Failed login', () => {
 
 test.describe('MH-007: Already authenticated redirect', () => {
   test('navigating to /login when already authed redirects to /', async ({ page }) => {
-    // Set a token before navigating
-    await page.goto('/login');
-    await setAuth(page);
+    // Use a valid JWT so isTokenExpired() passes and RequireAuth redirects to /
+    await page.route('**/api/setup/status', (r) =>
+      r.fulfill({ json: { setup_complete: true, has_admin: true } }),
+    );
+    await page.route('**/api/auth/me', (r) => r.fulfill({ json: MOCK_USER }));
     await page.route('**/api/rooms', (r) =>
       r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [] }) }),
     );
+
+    // Set a valid token before navigating to /login
+    await page.goto('/login');
+    await page.evaluate((tok) => localStorage.setItem('hive-auth-token', tok), VALID_TOKEN);
 
     await page.goto('/login');
     await expect(page).toHaveURL('/');
