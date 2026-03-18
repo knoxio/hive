@@ -1,10 +1,49 @@
 import { test, expect } from '@playwright/test';
 
+const MOCK_TOKEN =
+  'eyJhbGciOiJIUzI1NiJ9.' +
+  btoa(JSON.stringify({ sub: '1', username: 'admin', role: 'admin', exp: 9999999999, iat: 1 }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_') +
+  '.mock-sig';
+
+async function setupPage(page: import('@playwright/test').Page) {
+  await page.addInitScript((token: string) => {
+    localStorage.setItem('hive-auth-token', token);
+  }, MOCK_TOKEN);
+
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ sub: '1', username: 'admin', role: 'admin' }),
+    }),
+  );
+
+  await page.route('**/api/rooms', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ rooms: [], total: 0 }),
+    }),
+  );
+}
+
 /**
  * FE-003: Room List Sidebar with Workspace Grouping
  */
 test.describe('FE-003: Room List Sidebar', () => {
   test.beforeEach(async ({ page }) => {
+    await setupPage(page);
     await page.goto('/rooms');
   });
 
