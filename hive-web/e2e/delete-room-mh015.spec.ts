@@ -110,8 +110,10 @@ async function setupWithRoom(
 
   await page.goto('/rooms');
 
-  // Select the room so the room header appears
-  await page.getByText(`#${TEST_ROOM.id}`).click();
+  // Select the room so the room header appears.
+  // Use .first() to avoid strict mode violation — after selection the room name
+  // appears in both the sidebar button and the room header.
+  await page.getByText(`#${TEST_ROOM.id}`).first().click();
   await expect(page.getByTestId('delete-room-button')).toBeVisible();
 }
 
@@ -204,7 +206,7 @@ test.describe('MH-015: delete room — success flow', () => {
     await page.getByTestId('delete-room-button').click();
     await page.getByTestId('delete-room-confirmation-input').fill(TEST_ROOM.id);
     await page.getByTestId('delete-room-submit').click();
-    await expect(page.getByText(`#${TEST_ROOM.id}`)).not.toBeVisible();
+    await expect(page.getByText(`#${TEST_ROOM.id}`).first()).not.toBeVisible();
   });
 
   test('room header is hidden after deletion (room deselected)', async ({ page }) => {
