@@ -123,31 +123,45 @@ async function setupMocks(
  * Navigate to a room and wait for the chat timeline to be visible.
  *
  * @param waitForScrollable - When true, also waits until:
- *   1. History messages have loaded (scrollHeight > clientHeight), AND
- *   2. The initial auto-scroll to bottom has completed (scrollTop is near max).
+ *   1. History messages have rendered in the DOM (childElementCount > 0), AND
+ *   2. The timeline has been force-scrolled to the bottom so isAtBottom is true.
  *
  *   Both conditions are required by badge tests. Without (1), the container is
- *   empty and isAtBottom stays true. Without (2), a pending requestAnimationFrame
- *   from ChatTimeline's auto-scroll effect fires after the test scrolls up,
- *   resetting scrollTop to the bottom and causing isAtBottom to become true again
- *   before the WS message arrives.
+ *   empty and isAtBottom stays true regardless of scroll position. Without (2),
+ *   a pending requestAnimationFrame from ChatTimeline's auto-scroll effect can
+ *   fire after the test scrolls up, resetting scrollTop and causing isAtBottom
+ *   to become true again before the WS message arrives.
+ *
+ *   We use childElementCount instead of scrollHeight/clientHeight because
+ *   CI headless Chrome can return 0 for both layout properties before the
+ *   first paint, causing the old condition to never resolve.
+ *
+ *   We force-scroll via evaluate() instead of waiting for the rAF to naturally
+ *   complete — this is deterministic and unaffected by headless layout timing.
  */
 async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = false } = {}) {
   await page.goto(`/rooms/${roomId}`);
   await page.waitForSelector('[data-testid="chat-timeline"]', { timeout: 5000 });
   if (waitForScrollable) {
+    // Wait until at least one message element is present in the DOM.
     await page.waitForFunction(
       () => {
         const el = document.querySelector('[data-testid="chat-timeline"]') as HTMLElement | null;
-        if (!el) return false;
-        if (el.scrollHeight <= el.clientHeight) return false;
-        // Within 5px of the bottom — confirms the auto-scroll rAF has fired and
-        // smooth scroll animation has finished. After this there are no pending
-        // scroll animations that could override the test's manual scrollTop set.
-        return el.scrollHeight - el.scrollTop - el.clientHeight < 5;
+        return !!el && el.childElementCount > 0;
       },
+      null,
       { timeout: 5000 },
     );
+    // Force-scroll to the bottom so isAtBottom is true and no pending rAF
+    // can override the test's subsequent manual scrollTop assignment.
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="chat-timeline"]') as HTMLElement | null;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+    // Dispatch scroll event so React updates isAtBottom state synchronously.
+    await page.getByTestId('chat-timeline').dispatchEvent('scroll');
+    // Brief pause for React state to settle before the test continues.
+    await page.waitForTimeout(50);
   }
 }
 
