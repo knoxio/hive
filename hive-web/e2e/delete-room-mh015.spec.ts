@@ -11,8 +11,26 @@ const API_URL = process.env.HIVE_API_URL || 'http://localhost:3000';
 const ADMIN_USER = process.env.HIVE_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.HIVE_ADMIN_PASSWORD || 'test-password';
 
-const MOCK_TOKEN = 'mock-jwt-token-mh015';
 const TEST_ROOM = { id: 'room-to-delete', name: 'room-to-delete' };
+
+/** Build a minimal but structurally valid JWT (header.payload.sig). */
+function makeToken(
+  opts: { sub?: string; username?: string; role?: string; exp?: number } = {},
+): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: opts.sub ?? '1',
+      username: opts.username ?? 'tester',
+      role: opts.role ?? 'admin',
+      exp: opts.exp ?? 9_999_999_999,
+    }),
+  ).toString('base64url');
+  return `${header}.${payload}.fake-sig`;
+}
+
+const MOCK_TOKEN = makeToken();
+const MOCK_USER = { sub: '1', username: 'tester', role: 'admin', exp: 9_999_999_999 };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,6 +47,20 @@ async function setupWithRoom(
   await page.addInitScript((token: string) => {
     localStorage.setItem('hive-auth-token', token);
   }, MOCK_TOKEN);
+
+  // SetupGuard calls this; must return setup_complete=true or app redirects to /setup.
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  // AuthProvider validates the token in the background; 401 would log the user out.
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: MOCK_USER }),
+  );
 
   // Mock GET /api/rooms
   await page.route('**/api/rooms', async (route) => {
