@@ -139,8 +139,8 @@ async function setupMocks(
  *   even before any messages load — childElementCount > 0 would resolve
  *   immediately before history is rendered.
  *
- *   We force-scroll via evaluate() instead of waiting for the rAF to naturally
- *   complete — this is deterministic and unaffected by headless layout timing.
+ *   We force-scroll via evaluate() and then wait for data-at-bottom="true" to
+ *   confirm React has processed the scroll — deterministic, no timing guesses.
  */
 async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = false } = {}) {
   await page.goto(`/rooms/${roomId}`);
@@ -165,8 +165,8 @@ async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = fals
     });
     // Dispatch scroll event so React updates isAtBottom state synchronously.
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
-    // Brief pause for React state to settle before the test continues.
-    await page.waitForTimeout(50);
+    // Wait until React confirms isAtBottom=true via data attribute before continuing.
+    await page.waitForSelector('[data-testid="chat-timeline"][data-at-bottom="true"]', { timeout: 3000 });
   }
 }
 
@@ -241,8 +241,8 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
     // Dispatch a scroll event so React updates isAtBottom state.
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
 
-    // Wait briefly for state to update and WS to connect.
-    await page.waitForTimeout(100);
+    // Wait until React has processed the scroll and set isAtBottom=false.
+    await page.waitForSelector('[data-testid="chat-timeline"][data-at-bottom="false"]', { timeout: 3000 });
 
     // Send a new message via the mocked WebSocket.
     if (!sendToPage) throw new Error('WS mock not connected — sendToPage is undefined');
@@ -274,7 +274,7 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
       if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
-    await page.waitForTimeout(100);
+    await page.waitForSelector('[data-testid="chat-timeline"][data-at-bottom="false"]', { timeout: 3000 });
 
     if (!sendToPage) throw new Error('WS mock not connected — sendToPage is undefined');
     sendToPage(makeWsMessage('live-001', 'One message'));
@@ -306,7 +306,7 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
       if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
-    await page.waitForTimeout(100);
+    await page.waitForSelector('[data-testid="chat-timeline"][data-at-bottom="false"]', { timeout: 3000 });
 
     if (!sendToPage) throw new Error('WS mock not connected — sendToPage is undefined');
     sendToPage(makeWsMessage('live-001', 'First'));
@@ -342,7 +342,7 @@ test.describe('MH-024: clicking badge dismisses it', () => {
       if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
-    await page.waitForTimeout(100);
+    await page.waitForSelector('[data-testid="chat-timeline"][data-at-bottom="false"]', { timeout: 3000 });
 
     if (!sendToPage) throw new Error('WS mock not connected — sendToPage is undefined');
     sendToPage(makeWsMessage('live-001', 'New message'));
@@ -383,7 +383,7 @@ test.describe('MH-024: room switch resets badge', () => {
       if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
-    await page.waitForTimeout(100);
+    await page.waitForSelector('[data-testid="chat-timeline"][data-at-bottom="false"]', { timeout: 3000 });
 
     if (!sendToPage) throw new Error('WS mock not connected — sendToPage is undefined');
     sendToPage(makeWsMessage('live-001', 'Unseen message in alpha'));
