@@ -15,8 +15,31 @@
 
 import { test, expect } from '@playwright/test';
 
-const MOCK_TOKEN = 'mock-jwt-token-mh020';
 const TEST_ROOM = { id: 'test-room-mh020', name: 'test-room-mh020' };
+
+/** Build a valid JWT-format mock token (frontend only checks structure/expiry). */
+function makeToken(): string {
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const payload = btoa(
+    JSON.stringify({
+      sub: '1',
+      username: 'testuser',
+      role: 'admin',
+      jti: 'mh020',
+      iat: 1700000000,
+      exp: 9999999999,
+    }),
+  )
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `${header}.${payload}.MOCKSIG`;
+}
+
+const MOCK_TOKEN = makeToken();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,9 +56,29 @@ async function setupPage(
   page: import('@playwright/test').Page,
   members: ApiMember[] = [],
 ) {
-  await page.addInitScript((token: string) => {
-    localStorage.setItem('hive-auth-token', token);
-  }, MOCK_TOKEN);
+  await page.addInitScript(
+    ({ token, roomId }: { token: string; roomId: string }) => {
+      localStorage.setItem('hive-auth-token', token);
+      localStorage.setItem('hive-joined-rooms', roomId);
+    },
+    { token: MOCK_TOKEN, roomId: TEST_ROOM.id },
+  );
+
+  await page.route('**/api/setup/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    });
+  });
+
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ id: 1, username: 'testuser', role: 'admin' }),
+    });
+  });
 
   // Mock GET /api/rooms
   await page.route('**/api/rooms', async (route) => {
@@ -67,6 +110,18 @@ async function setupPage(
       body: JSON.stringify({ members }),
     });
   });
+
+  // Mock GET /api/rooms/:id/messages
+  await page.route(`**/api/rooms/${TEST_ROOM.id}/messages`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ messages: [], has_more: false }),
+    });
+  });
+
+  // Abort WebSocket connections — tests do not require live WS
+  await page.route('**/ws/**', (route) => route.abort());
 
   await page.goto('/rooms');
   await page.getByText(`#${TEST_ROOM.id}`).click();
