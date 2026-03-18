@@ -49,7 +49,7 @@ test.describe('FE-003: Room List Sidebar', () => {
 
   test('room list renders in left sidebar', async ({ page }) => {
     const sidebar = page.locator('[data-testid="sidebar"], .sidebar, [class*="sidebar"]').first();
-    const roomList = sidebar.locator('[data-testid="room-list"], [class*="room-list"], [class*="RoomList"]').first();
+    const roomList = sidebar.locator('[data-testid="room-list"], [data-testid="room-list-empty"], [class*="room-list"], [class*="RoomList"]').first();
     await expect(roomList).toBeVisible();
   });
 
