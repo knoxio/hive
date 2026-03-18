@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `tests/e2e/chat-timeline.spec.ts` — replaced unauthenticated `page.goto('/rooms')` shell with `setupPage()` helper (JWT injection, `/api/setup/status`, `/api/auth/me`, `/api/rooms` mocks) and rewrote tests to use strict `getByTestId` selectors (FE-004)
 - `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
 - Replaced constant-value test assertions in `ws_relay.rs` and `rooms.rs` with behavior assertions; extracted `validate_description_len` helper from inline handler guard (#176)
+- `error-states.spec.ts` now injects a valid JWT and stubs `/api/setup/status`, `/api/auth/me`, and `/api/rooms` across all four describe blocks — previously SetupGuard and RequireAuth redirected every test before any assertion could run (#231)
 
 ### Added
 - `GET /api/users/me` endpoint — returns username, role, and ID from JWT claims (MH-011)
