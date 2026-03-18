@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- `e2e/switch-rooms-mh017.spec.ts` — scope "clicking the same room twice" selector to `[data-testid="room-item"]` to avoid strict-mode violation when room header h2 and MemberPanel both contain the room name (#286)
+- `e2e/mh019-join-leave.spec.ts` — scope `getByText('#room-alpha/beta')` to modal element to avoid matching sidebar copies; add explicit `toBeVisible` waits before `leave-room-btn`/`join-room-btn` clicks to handle auto-seed race condition (#286)
 - `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
 - Replaced constant-value test assertions in `ws_relay.rs` and `rooms.rs` with behavior assertions; extracted `validate_description_len` helper from inline handler guard (#176)
 - Added `.fallback(fallback_handler)` to the axum router — unknown routes now return `{"error": "not_found"}` with `Content-Type: application/json` and status 404 instead of an empty-body 404 (#253)

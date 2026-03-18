@@ -155,7 +155,9 @@ test.describe('MH-017: switching rooms', () => {
   test('clicking the same room twice does not break navigation', async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/rooms/general');
-    await page.getByText('#general').click();
+    // Scope to the sidebar room-item to avoid matching the room header h2
+    // and MemberPanel text which also contain '#general' once the room is selected.
+    await page.locator('[data-testid="room-item"]').filter({ hasText: '#general' }).click();
     await expect(page).toHaveURL(/\/rooms\/general/);
     await expect(page.locator('h2').filter({ hasText: '#general' })).toBeVisible();
   });

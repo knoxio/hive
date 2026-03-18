@@ -110,8 +110,10 @@ test.describe('MH-019: Join/Leave Room', () => {
     await expect(page.locator('[data-testid="room-browser-item"]')).toHaveCount(2, {
       timeout: 5000,
     });
-    await expect(page.getByText('#room-alpha')).toBeVisible();
-    await expect(page.getByText('#room-beta')).toBeVisible();
+    // Scope to modal to avoid matching sidebar room buttons with the same text.
+    const modal = page.locator('[data-testid="join-room-modal"]');
+    await expect(modal.getByText('#room-alpha')).toBeVisible();
+    await expect(modal.getByText('#room-beta')).toBeVisible();
   });
 
   test('closing the modal via × button hides it', async ({ page }) => {
@@ -148,9 +150,10 @@ test.describe('MH-019: Join/Leave Room', () => {
     await page.locator('[data-testid="browse-rooms-button"]').click();
     await expect(page.locator('[data-testid="join-room-modal"]')).toBeVisible({ timeout: 5000 });
 
-    // Click the Leave button for room-alpha
+    // Click the Leave button for room-alpha (wait for auto-seed to complete first).
     const items = page.locator('[data-testid="room-browser-item"]');
     const alphaItem = items.filter({ hasText: '#room-alpha' });
+    await expect(alphaItem.locator('[data-testid="leave-room-btn"]')).toBeVisible({ timeout: 5000 });
     await alphaItem.locator('[data-testid="leave-room-btn"]').click();
 
     // Close modal
@@ -183,10 +186,12 @@ test.describe('MH-019: Join/Leave Room', () => {
     await expect(page.locator('[data-testid="join-room-modal"]')).toBeVisible({ timeout: 5000 });
     const items = page.locator('[data-testid="room-browser-item"]');
     const alphaItem = items.filter({ hasText: '#room-alpha' });
+    await expect(alphaItem.locator('[data-testid="leave-room-btn"]')).toBeVisible({ timeout: 5000 });
     await alphaItem.locator('[data-testid="leave-room-btn"]').click();
     await page.waitForTimeout(300);
 
     // Now join it again
+    await expect(alphaItem.locator('[data-testid="join-room-btn"]')).toBeVisible({ timeout: 5000 });
     await alphaItem.locator('[data-testid="join-room-btn"]').click();
     await page.waitForTimeout(300);
 
@@ -246,8 +251,10 @@ test.describe('MH-019: Join/Leave Room', () => {
     await expect(page.locator('[data-testid="join-room-modal"]')).toBeVisible({ timeout: 5000 });
     const items = page.locator('[data-testid="room-browser-item"]');
     const betaItem = items.filter({ hasText: '#room-beta' });
+    await expect(betaItem.locator('[data-testid="leave-room-btn"]')).toBeVisible({ timeout: 5000 });
     await betaItem.locator('[data-testid="leave-room-btn"]').click();
     await page.waitForTimeout(300);
+    await expect(betaItem.locator('[data-testid="join-room-btn"]')).toBeVisible({ timeout: 5000 });
     await betaItem.locator('[data-testid="join-room-btn"]').click();
     await page.waitForTimeout(300);
 
