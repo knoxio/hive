@@ -123,7 +123,8 @@ async function setupMocks(
  * Navigate to a room and wait for the chat timeline to be visible.
  *
  * @param waitForScrollable - When true, also waits until:
- *   1. History messages have rendered in the DOM (childElementCount > 0), AND
+ *   1. History messages have loaded and the container scrollHeight exceeds
+ *      clientHeight by > 100 px, AND
  *   2. The timeline has been force-scrolled to the bottom so isAtBottom is true.
  *
  *   Both conditions are required by badge tests. Without (1), the container is
@@ -132,9 +133,11 @@ async function setupMocks(
  *   fire after the test scrolls up, resetting scrollTop and causing isAtBottom
  *   to become true again before the WS message arrives.
  *
- *   We use childElementCount instead of scrollHeight/clientHeight because
- *   CI headless Chrome can return 0 for both layout properties before the
- *   first paint, causing the old condition to never resolve.
+ *   We check scrollHeight > clientHeight + 100 (matching ChatTimeline's
+ *   isAtBottom threshold of 100 px) rather than childElementCount because the
+ *   container always has permanent children (py-2 wrapper + bottomRef sentinel)
+ *   even before any messages load — childElementCount > 0 would resolve
+ *   immediately before history is rendered.
  *
  *   We force-scroll via evaluate() instead of waiting for the rAF to naturally
  *   complete — this is deterministic and unaffected by headless layout timing.
@@ -143,14 +146,16 @@ async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = fals
   await page.goto(`/rooms/${roomId}`);
   await page.waitForSelector('[data-testid="chat-timeline"]', { timeout: 5000 });
   if (waitForScrollable) {
-    // Wait until at least one message element is present in the DOM.
+    // Wait until history has loaded and the container overflows by > 100 px.
+    // ChatTimeline's isAtBottom uses a 100 px threshold, so this guarantees
+    // that setting scrollTop=1 will set isAtBottom=false.
     await page.waitForFunction(
       () => {
         const el = document.querySelector('[data-testid="chat-timeline"]') as HTMLElement | null;
-        return !!el && el.childElementCount > 0;
+        return !!el && el.scrollHeight > el.clientHeight + 100;
       },
       null,
-      { timeout: 5000 },
+      { timeout: 10000 },
     );
     // Force-scroll to the bottom so isAtBottom is true and no pending rAF
     // can override the test's subsequent manual scrollTop assignment.
