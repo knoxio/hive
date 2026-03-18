@@ -59,7 +59,13 @@ const MOCK_TOKEN = makeToken();
  * - Stub POST /api/auth/logout to return 200
  */
 async function setupPage(page: import('@playwright/test').Page) {
+  // Inject auth token only on the first page load per session.
+  // Using a sessionStorage flag prevents re-injection after logout (addInitScript
+  // runs on every page.goto() navigation, which would silently restore the token
+  // and cause post-logout protected-route tests to see isAuthenticated:true).
   await page.addInitScript((tok) => {
+    if (sessionStorage.getItem('__hive_test_token_injected') === '1') return;
+    sessionStorage.setItem('__hive_test_token_injected', '1');
     localStorage.setItem('hive-auth-token', tok);
   }, MOCK_TOKEN);
 

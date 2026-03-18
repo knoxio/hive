@@ -62,11 +62,6 @@ async function clearAuth(page: import('@playwright/test').Page) {
   await page.evaluate(() => localStorage.removeItem('hive-auth-token'));
 }
 
-/** Set a fake auth token in localStorage. */
-async function setAuth(page: import('@playwright/test').Page, token = 'existing-token') {
-  await page.evaluate((t) => localStorage.setItem('hive-auth-token', t), token);
-}
-
 // ---------------------------------------------------------------------------
 // MH-007 — Login page renders
 // ---------------------------------------------------------------------------
