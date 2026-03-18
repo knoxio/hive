@@ -21,9 +21,11 @@ const ADMIN_PASSWORD = process.env.HIVE_ADMIN_PASSWORD || 'test-password';
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function loginAsAdmin(
-  request: Parameters<typeof test>[1] extends { request: infer R } ? R : never,
-): Promise<string> {
+async function loginAsAdmin({
+  request,
+}: {
+  request: Parameters<typeof test>[1] extends { request: infer R } ? R : never;
+}): Promise<string> {
   const res = await request.post(`${API_URL}/api/auth/login`, {
     data: { username: ADMIN_USER, password: ADMIN_PASSWORD },
   });
