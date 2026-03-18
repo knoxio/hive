@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- `e2e/mh027-ws-reconnect.spec.ts`: replace `page.route('**/ws/**')` with `page.routeWebSocket('**/ws/**')` for WS interception — `page.route` does not intercept ws:// upgrade requests in Playwright 1.58+; add `**/api/rooms/*/messages**` mock to `setupPage` so `loadInitial` does not produce unhandled fetch rejections when a room is selected
 - `src/lib/apiError.ts` (`apiFetch`): return `undefined` on 204 No Content instead of calling `res.json()` — leave/delete endpoints that return 204 were causing a JSON parse error, silently aborting state updates such as `setJoinedRoomIds` after leaving a room
 - `e2e/logout-mh009.spec.ts` (`setupPage`): add sessionStorage guard to `addInitScript` so the mock JWT is only injected on the first page load per tab session — prevents re-injection after logout when `page.goto('/rooms')` triggers another init script run, which was causing the post-logout protected-route redirect test to fail
 - `e2e/switch-rooms-mh017.spec.ts` — scope "clicking the same room twice" selector to `[data-testid="room-item"]` to avoid strict-mode violation when room header h2 and MemberPanel both contain the room name (#286)

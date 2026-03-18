@@ -5,7 +5,8 @@
  * URL changes (room switch), that reconnecting state is surfaced in the UI,
  * and that the manual retry button works via ConnectionStatusBar (MH-026).
  *
- * All API calls and WebSocket connections are mocked via page.route().
+ * All API calls are mocked via page.route(); WebSocket connections are intercepted
+ * via page.routeWebSocket() (page.route does not intercept ws:// in Playwright 1.58+).
  */
 import { test, expect } from '@playwright/test';
 
@@ -96,8 +97,19 @@ async function setupPage(page: import('@playwright/test').Page) {
     }),
   );
 
-  // Abort WebSocket upgrade requests — the test verifies URL changes only.
-  await page.route('**/ws/**', (route) => route.abort());
+  // Return empty message history so loadInitial does not fail with a network error.
+  await page.route('**/api/rooms/*/messages**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ messages: [], has_more: false }),
+    }),
+  );
+
+  // Intercept WebSocket connections at the WS protocol level.
+  // page.route() does not intercept ws:// upgrade requests in Playwright 1.58+;
+  // page.routeWebSocket() must be used instead.
+  await page.routeWebSocket('**/ws/**', (ws) => ws.close());
 }
 
 test.describe('MH-027: WS Reconnect', () => {
@@ -131,10 +143,11 @@ test.describe('MH-027: WS Reconnect', () => {
     const wsUrls: string[] = [];
     await setupPage(page);
 
-    // Override WS abort with URL capture then abort
-    await page.route('**/ws/**', (route) => {
-      wsUrls.push(route.request().url());
-      return route.abort();
+    // Override the setupPage routeWebSocket handler with one that also captures URLs.
+    // Registered after setupPage so it has higher LIFO priority and fires first.
+    await page.routeWebSocket('**/ws/**', (ws) => {
+      wsUrls.push(ws.url());
+      ws.close();
     });
 
     await page.goto('/rooms');
@@ -162,9 +175,9 @@ test.describe('MH-027: WS Reconnect', () => {
   test('first WS attempt uses room-alpha URL', async ({ page }) => {
     const wsUrls: string[] = [];
     await setupPage(page);
-    await page.route('**/ws/**', (route) => {
-      wsUrls.push(route.request().url());
-      return route.abort();
+    await page.routeWebSocket('**/ws/**', (ws) => {
+      wsUrls.push(ws.url());
+      ws.close();
     });
 
     await page.goto('/rooms');
@@ -179,9 +192,9 @@ test.describe('MH-027: WS Reconnect', () => {
   test('WS URL includes JWT token query param', async ({ page }) => {
     const wsUrls: string[] = [];
     await setupPage(page);
-    await page.route('**/ws/**', (route) => {
-      wsUrls.push(route.request().url());
-      return route.abort();
+    await page.routeWebSocket('**/ws/**', (ws) => {
+      wsUrls.push(ws.url());
+      ws.close();
     });
 
     await page.goto('/rooms');
@@ -197,9 +210,9 @@ test.describe('MH-027: WS Reconnect', () => {
   test('no WS attempt when no room is selected', async ({ page }) => {
     const wsUrls: string[] = [];
     await setupPage(page);
-    await page.route('**/ws/**', (route) => {
-      wsUrls.push(route.request().url());
-      return route.abort();
+    await page.routeWebSocket('**/ws/**', (ws) => {
+      wsUrls.push(ws.url());
+      ws.close();
     });
 
     await page.goto('/rooms');
@@ -213,9 +226,9 @@ test.describe('MH-027: WS Reconnect', () => {
   }) => {
     const wsUrls: string[] = [];
     await setupPage(page);
-    await page.route('**/ws/**', (route) => {
-      wsUrls.push(route.request().url());
-      return route.abort();
+    await page.routeWebSocket('**/ws/**', (ws) => {
+      wsUrls.push(ws.url());
+      ws.close();
     });
 
     await page.goto('/rooms');
@@ -238,8 +251,8 @@ test.describe('MH-027: WS Reconnect', () => {
     const closedUrls: string[] = [];
     await setupPage(page);
 
-    // Track WS requests
-    await page.route('**/ws/**', (route) => route.abort());
+    // Track WS requests — use routeWebSocket since page.route does not intercept ws:// in Playwright 1.58+.
+    await page.routeWebSocket('**/ws/**', (ws) => ws.close());
 
     await page.route('**/api/rooms/room-alpha/leave', (route) =>
       route.fulfill({ status: 204 }),
