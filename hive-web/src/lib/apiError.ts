@@ -170,5 +170,10 @@ export async function apiFetch<T = unknown>(
     throw appError;
   }
 
+  // 204 No Content — no body to parse (e.g. leave/delete endpoints).
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }
