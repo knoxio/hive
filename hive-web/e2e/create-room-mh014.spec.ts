@@ -106,7 +106,7 @@ test.describe('MH-014: create room modal — open and close', () => {
   test('empty state "Create your first room" opens the modal', async ({ page }) => {
     await setupAuthenticatedPage(page, []);
     await expect(page.getByText('Create your first room').first()).toBeVisible();
-    await page.getByText('Create your first room').first().click();
+    await page.getByRole('button', { name: 'Create your first room' }).click();
     await expect(page.getByTestId('create-room-modal')).toBeVisible();
   });
 

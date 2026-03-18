@@ -120,6 +120,8 @@ export function RoomSettingsPanel({ room, onClose, onUpdated }: RoomSettingsPane
       }
 
       const updated = (await res.json()) as Room;
+      setDisplayName(updated.display_name ?? "");
+      setDescription(updated.description ?? "");
       onUpdated({ display_name: updated.display_name, description: updated.description });
       setSaved(true);
     } catch {
