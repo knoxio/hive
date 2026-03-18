@@ -4,15 +4,75 @@
  * Tests verify that API errors produce human-readable messages, the React
  * Error Boundary renders a fallback with a Reload button, and 404 navigation
  * routes render the Not Found page with a back link.
+ *
+ * All tests inject a valid JWT and stub the required auth/setup endpoints so
+ * that SetupGuard and RequireAuth pass without a live backend.
  */
 
 import { test, expect } from '@playwright/test';
+
+/** Build a minimal but structurally valid JWT (header.payload.sig). */
+function makeToken(
+  opts: { sub?: string; username?: string; role?: string; exp?: number } = {},
+): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: opts.sub ?? '1',
+      username: opts.username ?? 'tester',
+      role: opts.role ?? 'user',
+      exp: opts.exp ?? 9_999_999_999,
+    }),
+  ).toString('base64url');
+  return `${header}.${payload}.fake-sig`;
+}
+
+const MOCK_TOKEN = makeToken();
+const MOCK_USER = { sub: '1', username: 'tester', role: 'user', exp: 9_999_999_999 };
+
+/**
+ * Inject auth state and stub all endpoints required for the app to load
+ * cleanly:
+ *   - localStorage token so RequireAuth sees an authenticated user
+ *   - /api/setup/status → setup_complete:true so SetupGuard does not redirect
+ *   - /api/auth/me      → user object so AuthProvider background check passes
+ *   - /api/rooms        → empty list so App.tsx mount fetch does not error
+ */
+async function setupPage(page: import('@playwright/test').Page) {
+  await page.addInitScript((tok: string) => {
+    localStorage.setItem('hive-auth-token', tok);
+  }, MOCK_TOKEN);
+
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: MOCK_USER }),
+  );
+
+  await page.route('**/api/rooms', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ rooms: [], total: 0 }),
+    }),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // MH-006 — 404 navigation route
 // ---------------------------------------------------------------------------
 
 test.describe('MH-006: 404 page not found', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupPage(page);
+  });
+
   test('unknown route shows "Page not found" heading', async ({ page }) => {
     await page.goto('/this-route-does-not-exist');
 
@@ -50,6 +110,10 @@ test.describe('MH-006: 404 page not found', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('MH-006: Error boundary', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupPage(page);
+  });
+
   test('error boundary fallback shows "Something went wrong" and Reload button', async ({ page }) => {
     // Inject a component that throws synchronously after mount by navigating to
     // a page that renders a deliberately broken component via a query flag.
@@ -88,6 +152,12 @@ test.describe('MH-006: Error boundary', () => {
 
 test.describe('MH-006: API error messages are user-friendly', () => {
   test('401 response from rooms API does not show raw status code', async ({ page }) => {
+    // Auth stubs must be registered before the rooms error stub so the user
+    // remains authenticated when the rooms fetch fires.
+    await setupPage(page);
+
+    // Override the /api/rooms stub from setupPage with an error response.
+    // Playwright uses LIFO ordering — this handler takes priority.
     await page.route('**/api/rooms', (route) =>
       route.fulfill({
         status: 401,
@@ -106,6 +176,8 @@ test.describe('MH-006: API error messages are user-friendly', () => {
   });
 
   test('network failure on rooms API does not show stack trace', async ({ page }) => {
+    await setupPage(page);
+
     await page.route('**/api/rooms', (route) => route.abort('connectionrefused'));
     await page.route('**/api/agents', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ agents: [] }) }),
@@ -125,6 +197,8 @@ test.describe('MH-006: API error messages are user-friendly', () => {
 
 test.describe('MH-006: apiFetch centralised error parsing', () => {
   test('app handles 503 server error gracefully (no crash)', async ({ page }) => {
+    await setupPage(page);
+
     await page.route('**/api/rooms', (route) =>
       route.fulfill({
         status: 503,
@@ -145,6 +219,8 @@ test.describe('MH-006: apiFetch centralised error parsing', () => {
   });
 
   test('app handles 500 error gracefully (no crash)', async ({ page }) => {
+    await setupPage(page);
+
     await page.route('**/api/rooms', (route) =>
       route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'internal_error' }) }),
     );
