@@ -22,11 +22,32 @@ function makeToken(data: {
 
 const TOKEN = makeToken({ sub: '1', username: 'tester', role: 'admin' });
 
-/** Inject auth token and stub health + setup endpoints so the app loads. */
+const MOCK_USER = { sub: '1', username: 'tester', role: 'admin', exp: 9_999_999_999 };
+
+/** Inject auth token and stub all required endpoints so the app loads cleanly. */
 async function setupPage(page: import('@playwright/test').Page) {
   await page.addInitScript((tok) => {
     localStorage.setItem('hive-auth-token', tok);
   }, TOKEN);
+
+  // SetupGuard calls this; must return setup_complete=true or app redirects to /setup.
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  // AuthProvider validates the token in the background; 401 would log the user out.
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: MOCK_USER }),
+  );
+
+  // App.tsx fetches rooms on mount regardless of the active tab.
+  await page.route('**/api/rooms', (route) =>
+    route.fulfill({ json: { rooms: [], total: 0 } }),
+  );
 
   await page.route('**/api/health', (route) =>
     route.fulfill({
@@ -39,14 +60,6 @@ async function setupPage(page: import('@playwright/test').Page) {
         daemon_connected: true,
         daemon_url: 'ws://127.0.0.1:4200',
       }),
-    }),
-  );
-
-  await page.route('**/api/setup/status', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ complete: true }),
     }),
   );
 }
@@ -63,7 +76,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.locator('[data-testid="agent-grid"]')).toBeVisible({ timeout: 10000 });
   });
 
@@ -84,7 +97,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.locator('[data-testid="agent-card"]').first()).toBeVisible({
       timeout: 10000,
     });
@@ -104,7 +117,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText('r2d2')).toBeVisible({ timeout: 10000 });
   });
 
@@ -119,7 +132,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText(/no agents connected/i)).toBeVisible({ timeout: 10000 });
   });
 
@@ -134,7 +147,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText(/cannot connect/i)).toBeVisible({ timeout: 10000 });
   });
 
@@ -143,7 +156,7 @@ test.describe('MH-025: Agent List', () => {
 
     await page.route('**/api/agents', (route) => route.abort());
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText(/cannot connect/i)).toBeVisible({ timeout: 10000 });
   });
 
@@ -164,7 +177,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText('3 agents')).toBeVisible({ timeout: 10000 });
   });
 
@@ -181,7 +194,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText('1 agent')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('1 agents')).not.toBeVisible();
   });
@@ -205,7 +218,7 @@ test.describe('MH-025: Agent List', () => {
       }),
     );
 
-    await page.goto('/');
+    await page.goto('/agents');
     await expect(page.getByText('implementing PR #42')).toBeVisible({ timeout: 10000 });
   });
 
@@ -223,7 +236,7 @@ test.describe('MH-025: Agent List', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/agents');
     await page.waitForTimeout(1500);
     expect(authHeaders.length).toBeGreaterThan(0);
     expect(authHeaders[0]).toMatch(/^Bearer /);
