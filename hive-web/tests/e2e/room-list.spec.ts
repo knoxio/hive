@@ -81,12 +81,10 @@ test.describe('FE-003: Room List Sidebar', () => {
   });
 
   test('empty state shown when no rooms exist', async ({ page }) => {
-    // Look for empty state message
-    const emptyState = page.locator('[data-testid="empty-state"], [class*="empty"]').first();
-    const roomItems = page.locator('[data-testid="room-item"], [class*="room-item"]');
+    const roomItems = page.locator('[data-testid="room-item"]');
     const count = await roomItems.count();
     if (count === 0) {
-      await expect(emptyState).toBeVisible();
+      await expect(page.getByTestId('room-list-empty')).toBeVisible();
     }
   });
 });

@@ -44,7 +44,7 @@ async function setupPage(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ setup_complete: true }),
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
     });
   });
 

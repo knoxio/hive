@@ -59,18 +59,14 @@ test.describe('FE-007: WebSocket Connection', () => {
   });
 
   test('connection status indicator is visible', async ({ page }) => {
-    const indicator = page.locator(
-      '[data-testid="connection-status"], [class*="connection"], [class*="status-indicator"]'
-    ).first();
+    const indicator = page.locator('[data-testid="connection-status-bar"]').first();
     await expect(indicator).toBeVisible();
   });
 
   test('connected state shows green indicator', async ({ page }) => {
     // Wait for connection to establish
     await page.waitForTimeout(2000);
-    const indicator = page.locator(
-      '[data-testid="connection-status"], [class*="connection"], [class*="status-indicator"]'
-    ).first();
+    const indicator = page.locator('[data-testid="connection-status-bar"]').first();
     if (await indicator.isVisible()) {
       // Should show connected state (green or "connected" text)
       // Note: may show disconnected if no backend running — that's also valid behavior
