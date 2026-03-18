@@ -1210,7 +1210,8 @@ mod tests {
         let app = Router::new()
             .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
             .with_state(std::sync::Arc::clone(&state));
-        let payload = serde_json::to_vec(&serde_json::json!({"display_name": "bad name!"})).unwrap();
+        let payload =
+            serde_json::to_vec(&serde_json::json!({"display_name": "bad name!"})).unwrap();
         let req = axum::http::Request::builder()
             .method("PATCH")
             .uri("/api/rooms/my-room")
