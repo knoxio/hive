@@ -44,6 +44,17 @@ struct HealthResponse {
     daemon_url: String,
 }
 
+/// Fallback handler for all unmatched routes — returns a structured JSON 404.
+///
+/// Ensures unknown endpoints return `{"error": "not_found"}` with the correct
+/// `Content-Type: application/json` header rather than an empty plain-text 404.
+async fn fallback_handler() -> impl axum::response::IntoResponse {
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        axum::Json(serde_json::json!({"error": "not_found"})),
+    )
+}
+
 /// GET /api/health — returns server status, version, uptime, and daemon connection.
 async fn health(state: axum::extract::State<Arc<AppState>>) -> Json<HealthResponse> {
     let daemon_url = state.config.daemon.ws_url.clone();
@@ -185,6 +196,7 @@ async fn main() {
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
+        .fallback(fallback_handler)
         .with_state(state)
         .layer(
             CorsLayer::new()
@@ -228,5 +240,36 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => tracing::info!("received SIGINT, initiating shutdown"),
         _ = terminate => tracing::info!("received SIGTERM, initiating shutdown"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn fallback_returns_404() {
+        let resp = fallback_handler().await.into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn fallback_returns_json_with_error_field() {
+        let resp = fallback_handler().await.into_response();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            content_type.contains("application/json"),
+            "expected JSON content-type, got: {content_type}"
+        );
+        let body = to_bytes(resp.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "not_found");
     }
 }
