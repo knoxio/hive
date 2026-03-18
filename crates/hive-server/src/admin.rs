@@ -62,8 +62,8 @@ pub struct ListUsersResponse {
 /// Request body for `POST /api/admin/users`.
 #[derive(Deserialize)]
 pub struct CreateUserRequest {
-    pub username: String,
-    pub password: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
     /// Role to assign. Defaults to "user" if omitted.
     #[serde(default = "default_role")]
     pub role: String,
@@ -172,30 +172,33 @@ pub(crate) async fn create_user(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(claims): axum::extract::Extension<Claims>,
     Json(req): Json<CreateUserRequest>,
-) -> HiveResult<Json<CreateUserResponse>> {
+) -> HiveResult<(axum::http::StatusCode, Json<CreateUserResponse>)> {
     require_admin(&claims)?;
 
-    if req.username.is_empty() || req.password.is_empty() {
-        return Err(HiveError::BadRequest(
-            "username and password are required".into(),
-        ));
-    }
+    let username = req
+        .username
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| HiveError::BadRequest("username is required".into()))?;
+    let password = req
+        .password
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| HiveError::BadRequest("password is required".into()))?;
     validate_role(&req.role)?;
 
-    let password = req.password.clone();
+    let password = password.clone();
     let hash = tokio::task::spawn_blocking(move || bcrypt::hash(&password, bcrypt::DEFAULT_COST))
         .await
         .map_err(|e| HiveError::Internal(format!("task join error: {e}")))?
         .map_err(|e| HiveError::Internal(format!("bcrypt error: {e}")))?;
 
     let db = state.db.clone();
-    let username = req.username.clone();
+    let username_db = username.clone();
     let role = req.role.clone();
     tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             let result = conn.execute(
                 "INSERT INTO local_users (username, password_hash, role) VALUES (?1, ?2, ?3)",
-                rusqlite::params![username, hash, role],
+                rusqlite::params![username_db, hash, role],
             );
             match result {
                 Err(rusqlite::Error::SqliteFailure(e, _))
@@ -212,8 +215,8 @@ pub(crate) async fn create_user(
             let id: i64 = conn.query_row("SELECT last_insert_rowid()", [], |row| row.get(0))?;
             Ok(CreateUserResponse {
                 id,
-                username: req.username,
-                role: req.role,
+                username: username_db,
+                role,
             })
         })
     })
@@ -228,7 +231,7 @@ pub(crate) async fn create_user(
             HiveError::Internal(format!("db error: {e}"))
         }
     })
-    .map(Json)
+    .map(|resp| (axum::http::StatusCode::CREATED, Json(resp)))
 }
 
 /// `PATCH /api/admin/users/:id` — update role or active status.
@@ -692,7 +695,7 @@ mod tests {
             .body(Body::from(payload))
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        assert_eq!(resp.status(), axum::http::StatusCode::CREATED);
         let bytes = to_bytes(resp.into_body(), 4096).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["username"], "newbie");
