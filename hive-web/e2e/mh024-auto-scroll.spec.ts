@@ -123,18 +123,19 @@ async function setupMocks(
  * Navigate to a room and wait for the chat timeline to be visible.
  *
  * @param waitForScrollable - When true, also waits until:
- *   1. History messages have rendered in the DOM (childElementCount > 0), AND
+ *   1. History messages have loaded AND the container overflows by > 100 px, AND
  *   2. The timeline has been force-scrolled to the bottom so isAtBottom is true.
  *
- *   Both conditions are required by badge tests. Without (1), the container is
- *   empty and isAtBottom stays true regardless of scroll position. Without (2),
- *   a pending requestAnimationFrame from ChatTimeline's auto-scroll effect can
- *   fire after the test scrolls up, resetting scrollTop and causing isAtBottom
- *   to become true again before the WS message arrives.
+ *   Both conditions are required by badge tests. Without (1), the container has
+ *   insufficient overflow for scrollTop=1 to register as not-at-bottom (ChatTimeline
+ *   uses a 100 px nearBottom threshold). Without (2), a pending requestAnimationFrame
+ *   from ChatTimeline's auto-scroll effect can fire after the test scrolls up,
+ *   resetting scrollTop and causing isAtBottom to become true again before the WS
+ *   message arrives.
  *
- *   We use childElementCount instead of scrollHeight/clientHeight because
- *   CI headless Chrome can return 0 for both layout properties before the
- *   first paint, causing the old condition to never resolve.
+ *   We check scrollHeight > clientHeight + 100 (not childElementCount > 0) because
+ *   the chat-timeline container always has child nodes (wrapper div, bottomRef),
+ *   so childElementCount > 0 resolves immediately before history messages load.
  *
  *   We force-scroll via evaluate() instead of waiting for the rAF to naturally
  *   complete — this is deterministic and unaffected by headless layout timing.
@@ -143,11 +144,13 @@ async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = fals
   await page.goto(`/rooms/${roomId}`);
   await page.waitForSelector('[data-testid="chat-timeline"]', { timeout: 5000 });
   if (waitForScrollable) {
-    // Wait until at least one message element is present in the DOM.
+    // Wait until history messages are rendered AND the container overflows by
+    // more than the ChatTimeline nearBottom threshold (100 px). This guarantees
+    // that setting scrollTop=1 in the test body will cause isAtBottom=false.
     await page.waitForFunction(
       () => {
         const el = document.querySelector('[data-testid="chat-timeline"]') as HTMLElement | null;
-        return !!el && el.childElementCount > 0;
+        return !!el && el.scrollHeight > el.clientHeight + 100;
       },
       null,
       { timeout: 5000 },
