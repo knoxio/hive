@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- `member-list-mh020.spec.ts` — replaced invalid plain-string `MOCK_TOKEN` with proper JWT via `makeToken()`; added `/api/setup/status`, `/api/auth/me`, `/api/rooms/:id/messages` mocks and WS abort to `setupPage()`; set `hive-joined-rooms` in localStorage so sidebar renders the test room (MH-020)
 - `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
 - Replaced constant-value test assertions in `ws_relay.rs` and `rooms.rs` with behavior assertions; extracted `validate_description_len` helper from inline handler guard (#176)
 
