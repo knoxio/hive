@@ -71,6 +71,22 @@ async function setupMocks(
     localStorage.setItem('hive-joined-rooms', 'alpha,beta');
   }, MOCK_TOKEN);
 
+  await page.route('**/api/setup/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    });
+  });
+
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ sub: '1', username: 'testuser', role: 'user' }),
+    });
+  });
+
   await page.route('**/api/rooms', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.continue();
