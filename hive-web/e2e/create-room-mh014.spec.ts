@@ -7,11 +7,41 @@
 
 import { test, expect } from '@playwright/test';
 
-const MOCK_TOKEN = 'mock-jwt-token-mh014';
+// A mock JWT with admin role so the app renders past the auth guard.
+// Payload: { sub: "1", username: "admin", role: "admin", exp: 9999999999 }
+const MOCK_TOKEN =
+  'eyJhbGciOiJIUzI1NiJ9.' +
+  btoa(JSON.stringify({ sub: '1', username: 'admin', role: 'admin', exp: 9999999999, iat: 1 }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_') +
+  '.mock-sig';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Stub the two guard routes that run before any protected page renders.
+ * Must be called before page.goto().
+ */
+async function mockCommonRoutes(page: import('@playwright/test').Page) {
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ sub: '1', username: 'admin', role: 'admin' }),
+    }),
+  );
+}
 
 /** Set up a page with a mocked auth token and mocked room list + create APIs. */
 async function setupAuthenticatedPage(
@@ -21,6 +51,8 @@ async function setupAuthenticatedPage(
   await page.addInitScript((token: string) => {
     localStorage.setItem('hive-auth-token', token);
   }, MOCK_TOKEN);
+
+  await mockCommonRoutes(page);
 
   // Mock GET /api/rooms
   await page.route('**/api/rooms', async (route) => {
@@ -168,6 +200,8 @@ test.describe('MH-014: create room — error handling', () => {
     await page.addInitScript((token: string) => {
       localStorage.setItem('hive-auth-token', token);
     }, MOCK_TOKEN);
+
+    await mockCommonRoutes(page);
 
     await page.route('**/api/rooms', async (route) => {
       if (route.request().method() === 'GET') {
