@@ -10,7 +10,34 @@
 
 import { test, expect } from '@playwright/test';
 
-const MOCK_TOKEN = 'mock-jwt-token-mh017';
+// ---------------------------------------------------------------------------
+// JWT helper — produces a structurally valid JWT the client-side auth guard
+// accepts (checks format and exp claim only; signature is not verified).
+// ---------------------------------------------------------------------------
+
+function makeToken(opts: {
+  sub?: string;
+  username?: string;
+  role?: string;
+  exp?: number;
+} = {}): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: opts.sub ?? '1',
+      username: opts.username ?? 'tester',
+      role: opts.role ?? 'user',
+      jti: 'mh017-test',
+      iat: 0,
+      exp: opts.exp ?? 9_999_999_999,
+    }),
+  ).toString('base64url');
+  return `${header}.${payload}.fake-sig`;
+}
+
+const MOCK_TOKEN = makeToken();
+
+const MOCK_USER = { sub: '1', username: 'tester', role: 'user', exp: 9_999_999_999 };
 
 const MOCK_ROOMS = [
   { id: 'general', name: 'general' },
@@ -26,6 +53,14 @@ async function setupAuthenticatedPage(page: import('@playwright/test').Page) {
   await page.addInitScript((token: string) => {
     localStorage.setItem('hive-auth-token', token);
   }, MOCK_TOKEN);
+
+  // Setup guard — must return setup_complete=true or the app redirects to /setup.
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({ json: { setup_complete: true, has_admin: true } }),
+  );
+
+  // Auth background validation — must return 200 or AuthProvider logs the user out.
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: MOCK_USER }));
 
   await page.route('**/api/rooms', async (route) => {
     if (route.request().method() !== 'GET') {
@@ -46,6 +81,16 @@ async function setupAuthenticatedPage(page: import('@playwright/test').Page) {
       }),
     });
   });
+
+  // Members endpoint — called by App.tsx when a room is selected.
+  await page.route('**/api/rooms/*/members', (route) =>
+    route.fulfill({ json: { members: [] } }),
+  );
+
+  // Message history — called when entering a room.
+  await page.route('**/api/rooms/*/messages*', (route) =>
+    route.fulfill({ json: { messages: [], total: 0, has_more: false } }),
+  );
 
   // Block WebSocket upgrades — not needed for routing tests
   await page.route('**/ws/**', (route) => route.abort());
@@ -140,6 +185,17 @@ test.describe('MH-017: unread badge behaviour', () => {
     await page.addInitScript((token: string) => {
       localStorage.setItem('hive-auth-token', token);
     }, MOCK_TOKEN);
+
+    await page.route('**/api/setup/status', (route) =>
+      route.fulfill({ json: { setup_complete: true, has_admin: true } }),
+    );
+    await page.route('**/api/auth/me', (route) => route.fulfill({ json: MOCK_USER }));
+    await page.route('**/api/rooms/*/members', (route) =>
+      route.fulfill({ json: { members: [] } }),
+    );
+    await page.route('**/api/rooms/*/messages*', (route) =>
+      route.fulfill({ json: { messages: [], total: 0, has_more: false } }),
+    );
 
     // Return rooms with an unread count on 'general'
     await page.route('**/api/rooms', async (route) => {
