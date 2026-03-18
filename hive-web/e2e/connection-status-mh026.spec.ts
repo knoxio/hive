@@ -20,6 +20,28 @@ const MOCK_TOKEN =
   '.mock-sig';
 
 /**
+ * Mock SetupGuard's /api/setup/status and AuthProvider's /api/auth/me so
+ * tests do not depend on a running backend.  Call before page.goto().
+ */
+async function mockCommonRoutes(page: import('@playwright/test').Page) {
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ sub: '1', username: 'admin', role: 'admin' }),
+    }),
+  );
+}
+
+/**
  * Mount the app in a basic authenticated state with no rooms selected.
  * WebSocket is never actually opened since no room is selected.
  */
@@ -27,6 +49,8 @@ async function setupPage(page: import('@playwright/test').Page) {
   await page.addInitScript((token: string) => {
     localStorage.setItem('hive-auth-token', token);
   }, MOCK_TOKEN);
+
+  await mockCommonRoutes(page);
 
   await page.route('**/api/rooms', async (route) => {
     await route.fulfill({
@@ -86,6 +110,8 @@ test.describe('MH-026: connection status bar — disconnected state', () => {
       localStorage.setItem('hive-auth-token', token);
     }, MOCK_TOKEN);
 
+    await mockCommonRoutes(page);
+
     await page.route('**/api/rooms', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
@@ -120,6 +146,8 @@ test.describe('MH-026: connection status bar — reconnecting state', () => {
       localStorage.setItem('hive-auth-token', token);
     }, MOCK_TOKEN);
 
+    await mockCommonRoutes(page);
+
     await page.route('**/api/rooms', async (route) => {
       await route.fulfill({
         status: 200,
@@ -151,6 +179,8 @@ test.describe('MH-026: connection status bar — reconnecting state', () => {
       localStorage.setItem('hive-auth-token', token);
     }, MOCK_TOKEN);
 
+    await mockCommonRoutes(page);
+
     await page.route('**/api/rooms', async (route) => {
       await route.fulfill({
         status: 200,
@@ -174,6 +204,8 @@ test.describe('MH-026: connection status bar — reconnecting state', () => {
     await page.addInitScript((token: string) => {
       localStorage.setItem('hive-auth-token', token);
     }, MOCK_TOKEN);
+
+    await mockCommonRoutes(page);
 
     await page.route('**/api/rooms', async (route) => {
       await route.fulfill({
