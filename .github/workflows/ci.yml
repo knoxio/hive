@@ -96,6 +96,8 @@ jobs:
         run: cd hive-web && pnpm exec playwright test
         env:
           HIVE_API_URL: http://localhost:3000
+          HIVE_ADMIN_USER: admin
+          HIVE_ADMIN_PASSWORD: admin-password
 
       - name: Upload Playwright report
         if: failure()
