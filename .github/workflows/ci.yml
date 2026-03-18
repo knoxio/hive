@@ -44,3 +44,64 @@ jobs:
         run: cd hive-web && pnpm build
       - name: Lint
         run: cd hive-web && pnpm exec eslint src/
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build hive-server
+        run: cargo build -p hive-server
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: hive-web/pnpm-lock.yaml
+      - name: Install frontend deps
+        run: cd hive-web && pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: cd hive-web && pnpm exec playwright install chromium --with-deps
+      - name: Build frontend
+        run: cd hive-web && pnpm build
+
+      - name: Start hive-server
+        run: |
+          mkdir -p /tmp/hive-data
+          HIVE_JWT_SECRET=ci-test-secret-for-playwright-e2e-tests-only \
+          HIVE_ADMIN_USER=admin \
+          HIVE_ADMIN_PASSWORD=admin-password \
+          HIVE_DATA_DIR=/tmp/hive-data \
+          ./target/debug/hive &
+          echo $! > /tmp/hive-server.pid
+
+      - name: Wait for hive-server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null; then
+              echo "hive-server ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "hive-server did not start in 30s" >&2
+          exit 1
+
+      - name: Run Playwright tests
+        run: cd hive-web && pnpm exec playwright test
+        env:
+          HIVE_API_URL: http://localhost:3000
+          HIVE_ADMIN_USER: admin
+          HIVE_ADMIN_PASSWORD: admin-password
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: hive-web/playwright-report/

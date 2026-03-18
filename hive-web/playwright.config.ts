@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testMatch: ['./e2e/**/*.spec.ts', './tests/e2e/**/*.spec.ts'],
+  testMatch: ['e2e/**/*.spec.ts', 'tests/e2e/**/*.spec.ts'],
   timeout: 30000,
   retries: 0,
   use: {
@@ -9,10 +9,10 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'pnpm dev --host 0.0.0.0 --port 5173',
+    command: 'pnpm preview --host 0.0.0.0 --port 5173',
     port: 5173,
     reuseExistingServer: true,
-    timeout: 30000,
+    timeout: 60000,
   },
   projects: [
     {
