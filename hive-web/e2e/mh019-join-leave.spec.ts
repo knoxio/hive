@@ -55,7 +55,7 @@ async function setupPage(page: import('@playwright/test').Page) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ complete: true }),
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
     }),
   );
 
