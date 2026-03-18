@@ -171,7 +171,7 @@ test.describe('MH-018: room settings panel — display name field', () => {
     await setupPage(page);
     await page.getByTestId('room-settings-button').click();
     await page.getByTestId('room-display-name-input').fill('bad name!');
-    await expect(page.getByText(/letters, numbers, hyphens/)).toBeVisible();
+    await expect(page.getByText(/Display name must be/)).toBeVisible();
     await expect(page.getByTestId('room-settings-save')).toBeDisabled();
   });
 
@@ -180,7 +180,7 @@ test.describe('MH-018: room settings panel — display name field', () => {
     await page.getByTestId('room-settings-button').click();
     await page.getByTestId('room-display-name-input').fill('bad!');
     await page.getByTestId('room-display-name-input').fill('good-name');
-    await expect(page.getByText(/letters, numbers, hyphens/)).not.toBeVisible();
+    await expect(page.getByText(/Display name must be/)).not.toBeVisible();
   });
 });
 
