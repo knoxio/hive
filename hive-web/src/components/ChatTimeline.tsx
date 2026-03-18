@@ -161,6 +161,7 @@ export default function ChatTimeline({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto"
         data-testid="chat-timeline"
+        data-at-bottom={isAtBottom ? 'true' : 'false'}
       >
         {/* Beginning of conversation indicator */}
         {atBeginning && messages.length > 0 && (
