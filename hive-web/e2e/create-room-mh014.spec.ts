@@ -54,33 +54,36 @@ async function setupAuthenticatedPage(
 
   await mockCommonRoutes(page);
 
-  // Mock GET /api/rooms
+  // Mock GET /api/rooms (stateful — POST appends to list so subsequent GETs reflect creation)
+  const rooms = initialRooms.map((r) => ({
+    ...r,
+    workspace_id: 1,
+    workspace_name: 'default',
+    added_at: new Date().toISOString(),
+  }));
+
   await page.route('**/api/rooms', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          rooms: initialRooms.map((r) => ({
-            ...r,
-            workspace_id: 1,
-            workspace_name: 'default',
-            added_at: new Date().toISOString(),
-          })),
-          total: initialRooms.length,
-        }),
+        body: JSON.stringify({ rooms, total: rooms.length }),
       });
     } else {
-      // POST — return the new room
-      const body = route.request().postDataJSON() as { name: string };
+      // POST — persist new room so subsequent GETs include it
+      const postBody = route.request().postDataJSON() as { name: string };
+      const newRoom = {
+        id: postBody.name.toLowerCase(),
+        name: postBody.name.toLowerCase(),
+        workspace_id: 1,
+        workspace_name: 'default',
+        added_at: new Date().toISOString(),
+      };
+      rooms.push(newRoom);
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
-        body: JSON.stringify({
-          id: body.name.toLowerCase(),
-          name: body.name.toLowerCase(),
-          workspace_id: 1,
-        }),
+        body: JSON.stringify(newRoom),
       });
     }
   });
@@ -102,8 +105,8 @@ test.describe('MH-014: create room modal — open and close', () => {
 
   test('empty state "Create your first room" opens the modal', async ({ page }) => {
     await setupAuthenticatedPage(page, []);
-    await expect(page.getByText('Create your first room')).toBeVisible();
-    await page.getByText('Create your first room').click();
+    await expect(page.getByText('Create your first room').first()).toBeVisible();
+    await page.getByText('Create your first room').first().click();
     await expect(page.getByTestId('create-room-modal')).toBeVisible();
   });
 
@@ -178,7 +181,7 @@ test.describe('MH-014: create room — success flow', () => {
     await page.getByTestId('create-room-button').click();
     await page.getByTestId('room-name-input').fill('brand-new');
     await page.getByTestId('create-room-submit').click();
-    await expect(page.getByText('#brand-new')).toBeVisible();
+    await expect(page.getByText('#brand-new').first()).toBeVisible();
   });
 
   test('description field is optional', async ({ page }) => {
