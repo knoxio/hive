@@ -543,7 +543,7 @@ function App() {
           {activeTab === "rooms" && selectedRoomId ? (
             <>
               {/* Room header */}
-              <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 flex items-center justify-between">
+              <div data-testid="room-header" className="px-4 py-2 border-b border-gray-700 bg-gray-800 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">
                   {rooms.find((r) => r.id === selectedRoomId)?.display_name ?? `#${selectedRoomId}`}
                 </h2>
