@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
 - Replaced constant-value test assertions in `ws_relay.rs` and `rooms.rs` with behavior assertions; extracted `validate_description_len` helper from inline handler guard (#176)
 - Added `.fallback(fallback_handler)` to the axum router — unknown routes now return `{"error": "not_found"}` with `Content-Type: application/json` and status 404 instead of an empty-body 404 (#253)
+- `hive-server`: seed default workspace (id=1, name="default") on startup — `POST /api/rooms` returned 404 in a fresh CI database because no workspace existed; `seed_default_workspace()` in `rooms.rs` called from `main.rs` after `seed_admin_user` fixes this (MH-014, MH-015)
 
 ### Added
 - `GET /api/users/me` endpoint — returns username, role, and ID from JWT claims (MH-011)

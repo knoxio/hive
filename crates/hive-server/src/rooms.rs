@@ -607,6 +607,41 @@ pub async fn get_room_members(
 }
 
 // ---------------------------------------------------------------------------
+// Seed helpers
+// ---------------------------------------------------------------------------
+
+/// Seed the default workspace (id=1, name="default") on first startup.
+///
+/// `create_room` defaults to workspace id 1. If no workspace exists (fresh CI
+/// database), it returns 404. This function ensures workspace 1 always exists
+/// so room creation works without manual setup.
+///
+/// Idempotent: uses `INSERT OR IGNORE` so repeat calls on an already-seeded
+/// database are safe.
+pub fn seed_default_workspace(db: &crate::db::Database) {
+    let result = db.with_conn(|conn| {
+        // Workspace owner_id references users(id). Insert a system user so the
+        // foreign-key constraint is satisfied even when no OAuth or local users
+        // have been created yet.
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, provider, provider_id) \
+             VALUES (1, 'system', 'system')",
+            [],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces (id, name, owner_id) \
+             VALUES (1, 'default', 1)",
+            [],
+        )?;
+        Ok(())
+    });
+    match result {
+        Ok(()) => tracing::info!("default workspace seeded (id=1)"),
+        Err(e) => tracing::error!("failed to seed default workspace: {e}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1167,5 +1202,37 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn seed_default_workspace_creates_workspace_id_1() {
+        let db = crate::db::Database::open_memory().unwrap();
+        seed_default_workspace(&db);
+
+        let ws_id: i64 = db
+            .with_conn(|conn| {
+                conn.query_row("SELECT id FROM workspaces WHERE id = 1", [], |row| {
+                    row.get(0)
+                })
+            })
+            .unwrap();
+        assert_eq!(ws_id, 1);
+    }
+
+    #[test]
+    fn seed_default_workspace_is_idempotent() {
+        let db = crate::db::Database::open_memory().unwrap();
+        // Calling twice must not panic or error.
+        seed_default_workspace(&db);
+        seed_default_workspace(&db);
+
+        let count: i64 = db
+            .with_conn(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM workspaces WHERE id = 1", [], |row| {
+                    row.get(0)
+                })
+            })
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }
