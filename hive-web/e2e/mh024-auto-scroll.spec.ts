@@ -122,11 +122,15 @@ async function setupMocks(
 /**
  * Navigate to a room and wait for the chat timeline to be visible.
  *
- * @param waitForScrollable - When true, also waits until history messages have
- *   loaded and the container is scrollable (scrollHeight > clientHeight). This
- *   is required by badge tests that scroll to the top before sending a live WS
- *   message — without it, `isAtBottom` is recalculated while the container is
- *   still empty, and the badge never appears.
+ * @param waitForScrollable - When true, also waits until:
+ *   1. History messages have loaded (scrollHeight > clientHeight), AND
+ *   2. The initial auto-scroll to bottom has completed (scrollTop is near max).
+ *
+ *   Both conditions are required by badge tests. Without (1), the container is
+ *   empty and isAtBottom stays true. Without (2), a pending requestAnimationFrame
+ *   from ChatTimeline's auto-scroll effect fires after the test scrolls up,
+ *   resetting scrollTop to the bottom and causing isAtBottom to become true again
+ *   before the WS message arrives.
  */
 async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = false } = {}) {
   await page.goto(`/rooms/${roomId}`);
@@ -134,10 +138,13 @@ async function goToRoom(page: Page, roomId = 'alpha', { waitForScrollable = fals
   if (waitForScrollable) {
     await page.waitForFunction(
       () => {
-        const el = document.querySelector('[data-testid="chat-timeline"]');
-        return el
-          ? (el as HTMLElement).scrollHeight > (el as HTMLElement).clientHeight
-          : false;
+        const el = document.querySelector('[data-testid="chat-timeline"]') as HTMLElement | null;
+        if (!el) return false;
+        if (el.scrollHeight <= el.clientHeight) return false;
+        // Within 5px of the bottom — confirms the auto-scroll rAF has fired and
+        // smooth scroll animation has finished. After this there are no pending
+        // scroll animations that could override the test's manual scrollTop set.
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 5;
       },
       { timeout: 5000 },
     );
@@ -207,7 +214,9 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
     // Scroll to the top of the timeline so isAtBottom becomes false.
     await page.evaluate(() => {
       const el = document.querySelector('[data-testid="chat-timeline"]');
-      if (el) (el as HTMLElement).scrollTop = 0;
+      // scrollTop=1 (not 0): onLoadMore fires only at scrollTop===0, which would
+      // set isPrependingRef=true in ChatTimeline and suppress the unseen counter.
+      if (el) (el as HTMLElement).scrollTop = 1;
     });
 
     // Dispatch a scroll event so React updates isAtBottom state.
@@ -241,7 +250,9 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
 
     await page.evaluate(() => {
       const el = document.querySelector('[data-testid="chat-timeline"]');
-      if (el) (el as HTMLElement).scrollTop = 0;
+      // scrollTop=1 (not 0): onLoadMore fires only at scrollTop===0, which would
+      // set isPrependingRef=true in ChatTimeline and suppress the unseen counter.
+      if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
     await page.waitForTimeout(100);
@@ -271,7 +282,9 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
 
     await page.evaluate(() => {
       const el = document.querySelector('[data-testid="chat-timeline"]');
-      if (el) (el as HTMLElement).scrollTop = 0;
+      // scrollTop=1 (not 0): onLoadMore fires only at scrollTop===0, which would
+      // set isPrependingRef=true in ChatTimeline and suppress the unseen counter.
+      if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
     await page.waitForTimeout(100);
@@ -305,7 +318,9 @@ test.describe('MH-024: clicking badge dismisses it', () => {
 
     await page.evaluate(() => {
       const el = document.querySelector('[data-testid="chat-timeline"]');
-      if (el) (el as HTMLElement).scrollTop = 0;
+      // scrollTop=1 (not 0): onLoadMore fires only at scrollTop===0, which would
+      // set isPrependingRef=true in ChatTimeline and suppress the unseen counter.
+      if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
     await page.waitForTimeout(100);
@@ -344,7 +359,9 @@ test.describe('MH-024: room switch resets badge', () => {
     // Scroll up and trigger unseen badge.
     await page.evaluate(() => {
       const el = document.querySelector('[data-testid="chat-timeline"]');
-      if (el) (el as HTMLElement).scrollTop = 0;
+      // scrollTop=1 (not 0): onLoadMore fires only at scrollTop===0, which would
+      // set isPrependingRef=true in ChatTimeline and suppress the unseen counter.
+      if (el) (el as HTMLElement).scrollTop = 1;
     });
     await page.getByTestId('chat-timeline').dispatchEvent('scroll');
     await page.waitForTimeout(100);
