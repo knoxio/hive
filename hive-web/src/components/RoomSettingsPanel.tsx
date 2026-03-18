@@ -68,7 +68,7 @@ export function RoomSettingsPanel({ room, onClose, onUpdated }: RoomSettingsPane
 
   const displayNameError =
     displayName.length > 0 && !NAME_PATTERN.test(displayName)
-      ? "Display name must be 1–80 characters: letters, numbers, spaces, hyphens, underscores only"
+      ? "Display name must be 1–80 characters: letters, numbers, hyphens, underscores, and spaces"
       : null;
 
   const descriptionError =
