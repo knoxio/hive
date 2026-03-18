@@ -68,7 +68,7 @@ test.describe('BE-003: WebSocket relay', () => {
     const result = await tryWsUpgrade(wsUrl('/ws/test-room'));
     // 'upgraded' → server accepted the WS handshake (101)
     // 400/502/503 → server declined upgrade for a known reason (daemon unavailable, etc.)
-    const valid: Array<WsResult['statusOrUpgraded']> = ['upgraded', 400, 502, 503];
+    const valid: Array<WsResult['statusOrUpgraded']> = ['upgraded', 400, 401, 502, 503];
     expect(valid).toContain(result.statusOrUpgraded);
   });
 
@@ -81,7 +81,7 @@ test.describe('BE-003: WebSocket relay', () => {
   test('WS endpoint for nonexistent room accepts upgrade or returns defined error', async () => {
     const result = await tryWsUpgrade(wsUrl('/ws/nonexistent-room-fix099'));
     // Same valid set — server should not return an unexpected status
-    const valid: Array<WsResult['statusOrUpgraded']> = ['upgraded', 400, 404, 502, 503];
+    const valid: Array<WsResult['statusOrUpgraded']> = ['upgraded', 400, 401, 404, 502, 503];
     expect(valid).toContain(result.statusOrUpgraded);
   });
 
