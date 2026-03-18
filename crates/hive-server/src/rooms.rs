@@ -39,8 +39,8 @@ pub struct Room {
 /// Request body for `PATCH /api/rooms/:room_id`.
 #[derive(Debug, Deserialize)]
 pub struct PatchRoomRequest {
-    /// New display name (1–80 chars, alphanumerics/hyphens/underscores).
-    pub name: Option<String>,
+    /// New display name (1–80 chars, alphanumerics/spaces/hyphens/underscores).
+    pub display_name: Option<String>,
     /// New description (max 280 chars, plain text).
     pub description: Option<String>,
 }
@@ -86,6 +86,27 @@ fn validate_room_name(name: &str) -> Result<(), String> {
     {
         return Err(
             "room name may only contain alphanumerics, hyphens, and underscores".to_owned(),
+        );
+    }
+    Ok(())
+}
+
+/// Valid display name pattern: 1–80 chars, alphanumerics/spaces/hyphens/underscores.
+///
+/// More permissive than `validate_room_name` — spaces are allowed so users can
+/// enter friendly labels like "My Dev Room". Special characters (!, @, /, etc.)
+/// are still rejected.
+fn validate_display_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 80 {
+        return Err("display name must be 1–80 characters".to_owned());
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_')
+    {
+        return Err(
+            "display name may only contain alphanumerics, spaces, hyphens, and underscores"
+                .to_owned(),
         );
     }
     Ok(())
@@ -291,9 +312,9 @@ pub async fn patch_room(
     Path(room_id): Path<String>,
     Json(body): Json<PatchRoomRequest>,
 ) -> impl IntoResponse {
-    // Validate name if provided.
-    if let Some(ref name) = body.name {
-        if let Err(msg) = validate_room_name(name) {
+    // Validate display_name if provided.
+    if let Some(ref display_name) = body.display_name {
+        if let Err(msg) = validate_display_name(display_name) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": msg})),
@@ -301,7 +322,7 @@ pub async fn patch_room(
                 .into_response();
         }
         // Check uniqueness against existing display_names and room_ids.
-        let name_clone = name.clone();
+        let name_clone = display_name.clone();
         let room_id_clone = room_id.clone();
         let unique_result = state.db.with_conn(move |conn| {
             let conflict: i64 = conn.query_row(
@@ -316,12 +337,12 @@ pub async fn patch_room(
             Ok(n) if n > 0 => {
                 return (
                     StatusCode::CONFLICT,
-                    Json(serde_json::json!({"error": "room name already in use"})),
+                    Json(serde_json::json!({"error": "display name already in use"})),
                 )
                     .into_response();
             }
             Err(e) => {
-                tracing::error!("failed to check name uniqueness: {e}");
+                tracing::error!("failed to check display name uniqueness: {e}");
                 return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
             }
             _ => {}
@@ -351,10 +372,10 @@ pub async fn patch_room(
         }
 
         // Apply updates.
-        if let Some(ref name) = body.name {
+        if let Some(ref display_name) = body.display_name {
             conn.execute(
                 "UPDATE workspace_rooms SET display_name = ?1 WHERE room_id = ?2",
-                rusqlite::params![name, room_id],
+                rusqlite::params![display_name, room_id],
             )?;
         }
         if let Some(ref desc) = body.description {
@@ -662,6 +683,24 @@ mod tests {
         assert!(validate_room_name("has space").is_err());
         assert!(validate_room_name("has/slash").is_err());
         assert!(validate_room_name("has@symbol").is_err());
+    }
+
+    #[test]
+    fn valid_display_names_accepted() {
+        assert!(validate_display_name("Dev").is_ok());
+        assert!(validate_display_name("My Dev Room").is_ok());
+        assert!(validate_display_name("room-dev").is_ok());
+        assert!(validate_display_name("room_123").is_ok());
+        assert!(validate_display_name(&"a".repeat(80)).is_ok());
+    }
+
+    #[test]
+    fn invalid_display_names_rejected() {
+        assert!(validate_display_name("").is_err());
+        assert!(validate_display_name(&"a".repeat(81)).is_err());
+        assert!(validate_display_name("bad name!").is_err());
+        assert!(validate_display_name("has/slash").is_err());
+        assert!(validate_display_name("has@symbol").is_err());
     }
 
     #[test]
@@ -1132,7 +1171,7 @@ mod tests {
         let app = Router::new()
             .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
             .with_state(std::sync::Arc::clone(&state));
-        let payload = serde_json::to_vec(&serde_json::json!({"name": "MyRoom"})).unwrap();
+        let payload = serde_json::to_vec(&serde_json::json!({"display_name": "MyRoom"})).unwrap();
         let req = axum::http::Request::builder()
             .method("PATCH")
             .uri("/api/rooms/my-room")
@@ -1153,7 +1192,7 @@ mod tests {
         let app = Router::new()
             .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
             .with_state(std::sync::Arc::clone(&state));
-        let payload = serde_json::to_vec(&serde_json::json!({"name": "NewName"})).unwrap();
+        let payload = serde_json::to_vec(&serde_json::json!({"display_name": "NewName"})).unwrap();
         let req = axum::http::Request::builder()
             .method("PATCH")
             .uri("/api/rooms/does-not-exist")
@@ -1171,7 +1210,7 @@ mod tests {
         let app = Router::new()
             .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
             .with_state(std::sync::Arc::clone(&state));
-        let payload = serde_json::to_vec(&serde_json::json!({"name": "has spaces"})).unwrap();
+        let payload = serde_json::to_vec(&serde_json::json!({"display_name": "bad name!"})).unwrap();
         let req = axum::http::Request::builder()
             .method("PATCH")
             .uri("/api/rooms/my-room")
@@ -1191,7 +1230,7 @@ mod tests {
             .route("/api/rooms/{room_id}", axum::routing::patch(patch_room))
             .with_state(std::sync::Arc::clone(&state));
         // Attempt to set display_name of room-a to "room-b" — conflicts with existing room_id.
-        let payload = serde_json::to_vec(&serde_json::json!({"name": "room-b"})).unwrap();
+        let payload = serde_json::to_vec(&serde_json::json!({"display_name": "room-b"})).unwrap();
         let req = axum::http::Request::builder()
             .method("PATCH")
             .uri("/api/rooms/room-a")

@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- `crates/hive-server/src/rooms.rs` (`PatchRoomRequest`): renamed field `name` → `display_name` so the PATCH body matches the frontend's `{ display_name }` payload — the server was silently ignoring display name updates; added `validate_display_name` which allows spaces in addition to alphanumerics/hyphens/underscores (rejects `!`, `@`, `/`, etc.) (tb-212)
+- `src/components/RoomSettingsPanel.tsx` (`NAME_PATTERN`): updated regex from `/^[a-zA-Z0-9_-]{1,80}$/` to `/^[a-zA-Z0-9 _-]{1,80}$/` to allow spaces in display names, matching the server's new `validate_display_name` rules (tb-212)
 - `e2e/mh027-ws-reconnect.spec.ts`: replace `page.route('**/ws/**')` with `page.routeWebSocket('**/ws/**')` for WS interception — `page.route` does not intercept ws:// upgrade requests in Playwright 1.58+; add `**/api/rooms/*/messages**` mock to `setupPage` so `loadInitial` does not produce unhandled fetch rejections when a room is selected
 - `src/lib/apiError.ts` (`apiFetch`): return `undefined` on 204 No Content instead of calling `res.json()` — leave/delete endpoints that return 204 were causing a JSON parse error, silently aborting state updates such as `setJoinedRoomIds` after leaving a room
 - `e2e/logout-mh009.spec.ts` (`setupPage`): add sessionStorage guard to `addInitScript` so the mock JWT is only injected on the first page load per tab session — prevents re-injection after logout when `page.goto('/rooms')` triggers another init script run, which was causing the post-logout protected-route redirect test to fail

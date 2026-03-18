@@ -11,7 +11,7 @@ import { FieldError } from "./FieldError";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-const NAME_PATTERN = /^[a-zA-Z0-9_-]{1,80}$/;
+const NAME_PATTERN = /^[a-zA-Z0-9 _-]{1,80}$/;
 const MAX_DESCRIPTION = 280;
 
 interface Room {
@@ -68,7 +68,7 @@ export function RoomSettingsPanel({ room, onClose, onUpdated }: RoomSettingsPane
 
   const displayNameError =
     displayName.length > 0 && !NAME_PATTERN.test(displayName)
-      ? "Display name must be 1–80 characters: letters, numbers, hyphens, underscores only"
+      ? "Display name must be 1–80 characters: letters, numbers, spaces, hyphens, underscores only"
       : null;
 
   const descriptionError =
