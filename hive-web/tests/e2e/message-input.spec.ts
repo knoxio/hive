@@ -8,9 +8,12 @@ const MOCK_TOKEN =
     .replace(/\//g, '_') +
   '.mock-sig';
 
+const MOCK_ROOMS = [{ id: 'general', name: 'general' }];
+
 async function setupPage(page: import('@playwright/test').Page) {
   await page.addInitScript((token: string) => {
     localStorage.setItem('hive-auth-token', token);
+    localStorage.setItem('hive-joined-rooms', 'general');
   }, MOCK_TOKEN);
 
   await page.route('**/api/setup/status', (route) =>
@@ -33,9 +36,27 @@ async function setupPage(page: import('@playwright/test').Page) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ rooms: [], total: 0 }),
+      body: JSON.stringify({ rooms: MOCK_ROOMS, total: MOCK_ROOMS.length }),
     }),
   );
+
+  await page.route('**/api/rooms/*/members', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ members: [], total: 0 }),
+    }),
+  );
+
+  await page.route('**/api/rooms/*/messages**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ messages: [], has_more: false }),
+    }),
+  );
+
+  await page.route('**/ws/**', (route) => route.abort());
 }
 
 /**
@@ -44,7 +65,7 @@ async function setupPage(page: import('@playwright/test').Page) {
 test.describe('FE-014: Message Input', () => {
   test.beforeEach(async ({ page }) => {
     await setupPage(page);
-    await page.goto('/rooms');
+    await page.goto('/rooms/general');
   });
 
   test('message input renders at bottom of chat', async ({ page }) => {
