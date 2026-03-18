@@ -7,7 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
-- `agents.spec.ts`: converted 5 `request`-fixture API tests to `page.route()` mocks — no running backend required (BE-012, BE-013, BE-015) (#252)
+- Reverted `page.route()+page.request` misuse in `agents.spec.ts`, `settings.spec.ts`, `negative.spec.ts`, `rooms-mh016.spec.ts` — `page.route()` does not intercept `page.request` calls; restored original `request`-fixture form (#274)
+- Restored `MH-018: PATCH /api/rooms/:room_id — API` test section in `room-settings-mh018.spec.ts` that was removed during tb-182 rewrite (#274)
 - `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
 - Replaced constant-value test assertions in `ws_relay.rs` and `rooms.rs` with behavior assertions; extracted `validate_description_len` helper from inline handler guard (#176)
 

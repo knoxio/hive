@@ -1,10 +1,15 @@
 /**
- * MH-018: Room settings — UI tests using mocked routes
+ * MH-018: Room settings — UI and backend integration
  *
- * All tests use mocked API responses — no running backend required.
+ * UI tests use mocked API responses (no backend required).
+ * API tests (PATCH /api/rooms/:room_id) require a running server.
  */
 
 import { test, expect } from '@playwright/test';
+
+const API_URL = process.env.HIVE_API_URL || 'http://localhost:3000';
+const ADMIN_USER = process.env.HIVE_ADMIN_USER || 'admin';
+const ADMIN_PASSWORD = process.env.HIVE_ADMIN_PASSWORD || 'test-password';
 
 // A mock JWT with an admin role so the UI renders correctly.
 // Payload: { sub: "1", username: "admin", role: "admin", exp: 9999999999 }
@@ -463,5 +468,131 @@ test.describe('MH-018: PATCH /api/rooms/:room_id — UI behaviour', () => {
     await page.getByTestId('room-settings-reset').click();
     // After reset, form is pristine — Save is disabled, no save issued
     await expect(page.getByTestId('room-settings-save')).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// API tests — PATCH /api/rooms/:room_id
+// ---------------------------------------------------------------------------
+
+test.describe('MH-018: PATCH /api/rooms/:room_id — API', () => {
+  type Fixture = Parameters<Parameters<typeof test>[1]>[0]['request'];
+
+  async function loginAsAdmin(request: Fixture): Promise<string> {
+    const res = await request.post(`${API_URL}/api/auth/login`, {
+      data: { username: ADMIN_USER, password: ADMIN_PASSWORD },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    return body.token as string;
+  }
+
+  async function createRoom(request: Fixture, token: string): Promise<string> {
+    const name = `settings-test-${Date.now()}`;
+    const res = await request.post(`${API_URL}/api/rooms`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { name },
+    });
+    expect(res.status()).toBe(201);
+    const body = await res.json();
+    return body.id as string;
+  }
+
+  test('returns 401 without token', async ({ request }) => {
+    const res = await request.patch(`${API_URL}/api/rooms/any-room`, {
+      data: { description: 'hello' },
+    });
+    expect(res.status()).toBe(401);
+  });
+
+  test('returns 404 for non-existent room', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const res = await request.patch(`${API_URL}/api/rooms/does-not-exist-${Date.now()}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { description: 'test' },
+    });
+    expect(res.status()).toBe(404);
+  });
+
+  test('returns 200 and updated room when description is set', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const roomId = await createRoom(request, token);
+
+    const res = await request.patch(`${API_URL}/api/rooms/${roomId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { description: 'A test room' },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.description).toBe('A test room');
+    expect(body.id).toBe(roomId);
+  });
+
+  test('returns 200 and updated room when display_name is set', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const roomId = await createRoom(request, token);
+
+    const res = await request.patch(`${API_URL}/api/rooms/${roomId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { display_name: 'Pretty Name' },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.display_name).toBe('Pretty Name');
+  });
+
+  test('returns 400 when display_name contains invalid characters', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const roomId = await createRoom(request, token);
+
+    const res = await request.patch(`${API_URL}/api/rooms/${roomId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { display_name: 'bad name!' },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(typeof body.error).toBe('string');
+  });
+
+  test('returns 400 when description exceeds 280 characters', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const roomId = await createRoom(request, token);
+
+    const res = await request.patch(`${API_URL}/api/rooms/${roomId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { description: 'x'.repeat(281) },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('280');
+  });
+
+  test('returns 200 for empty patch body (no-op)', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const roomId = await createRoom(request, token);
+
+    const res = await request.patch(`${API_URL}/api/rooms/${roomId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(res.status()).toBe(200);
+  });
+
+  test('updated description appears in GET /api/rooms', async ({ request }) => {
+    const token = await loginAsAdmin(request);
+    const roomId = await createRoom(request, token);
+    const desc = `desc-${Date.now()}`;
+
+    await request.patch(`${API_URL}/api/rooms/${roomId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { description: desc },
+    });
+
+    const listRes = await request.get(`${API_URL}/api/rooms`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const { rooms } = await listRes.json();
+    const found = (rooms as Array<{ id: string; description?: string }>).find((r) => r.id === roomId);
+    expect(found?.description).toBe(desc);
   });
 });
