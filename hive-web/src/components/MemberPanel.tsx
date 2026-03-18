@@ -151,7 +151,7 @@ export function MemberPanel({ members, roomName }: MemberPanelProps) {
   const totalCount = members.length;
 
   return (
-    <div className="flex flex-col h-full border-l border-gray-700 bg-gray-800">
+    <div className="flex flex-col h-full border-l border-gray-700 bg-gray-800" data-testid="member-panel">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-700">
         <h2 className="text-sm font-semibold text-gray-300">Members</h2>

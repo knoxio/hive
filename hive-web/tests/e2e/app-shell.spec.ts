@@ -29,6 +29,14 @@ async function setupPage(page: import('@playwright/test').Page) {
     }),
   );
 
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ sub: '1', username: 'admin', role: 'admin' }),
+    }),
+  );
+
   await page.route('**/api/rooms', (route) =>
     route.fulfill({
       status: 200,

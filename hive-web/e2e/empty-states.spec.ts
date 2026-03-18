@@ -38,6 +38,14 @@ async function setupAuth(page: import('@playwright/test').Page) {
       body: JSON.stringify({ setup_complete: true, has_admin: true }),
     }),
   );
+
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ sub: '1', username: 'tester', role: 'admin' }),
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------

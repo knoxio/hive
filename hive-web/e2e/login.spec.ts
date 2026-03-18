@@ -143,7 +143,6 @@ test.describe('MH-007: Password show/hide toggle', () => {
 
 test.describe('MH-007: Successful login', () => {
   test('successful login stores token and navigates to /', async ({ page }) => {
-    await clearAuth(page);
     await mockLoginSuccess(page, VALID_TOKEN);
     // SetupGuard and AuthProvider run after login redirects to /
     await page.route('**/api/setup/status', (r) =>
@@ -155,6 +154,7 @@ test.describe('MH-007: Successful login', () => {
     );
 
     await page.goto('/login');
+    await clearAuth(page);
     await page.getByTestId('login-username').fill('admin');
     await page.getByTestId('login-password').fill('password');
     await page.getByTestId('login-submit').click();
@@ -165,7 +165,6 @@ test.describe('MH-007: Successful login', () => {
   });
 
   test('login form shows loading state while request is in flight', async ({ page }) => {
-    await clearAuth(page);
     let resolveRoute: () => void;
     await page.route('**/api/auth/login', async (route) => {
       await new Promise<void>((resolve) => { resolveRoute = resolve; });
@@ -190,7 +189,6 @@ test.describe('MH-007: Successful login', () => {
   });
 
   test('Enter key submits the form', async ({ page }) => {
-    await clearAuth(page);
     await mockLoginSuccess(page);
     await page.route('**/api/setup/status', (r) =>
       r.fulfill({ json: { setup_complete: true, has_admin: true } }),
@@ -201,6 +199,7 @@ test.describe('MH-007: Successful login', () => {
     );
 
     await page.goto('/login');
+    await clearAuth(page);
     await page.getByTestId('login-username').fill('admin');
     await page.getByTestId('login-password').fill('password');
     await page.getByTestId('login-password').press('Enter');
@@ -215,10 +214,10 @@ test.describe('MH-007: Successful login', () => {
 
 test.describe('MH-007: Failed login', () => {
   test('failed login shows inline error without clearing username', async ({ page }) => {
-    await clearAuth(page);
     await mockLoginFailure(page);
 
     await page.goto('/login');
+    await clearAuth(page);
     await page.getByTestId('login-username').fill('admin');
     await page.getByTestId('login-password').fill('wrongpassword');
     await page.getByTestId('login-submit').click();
@@ -236,10 +235,10 @@ test.describe('MH-007: Failed login', () => {
   });
 
   test('password field is cleared after failed login', async ({ page }) => {
-    await clearAuth(page);
     await mockLoginFailure(page);
 
     await page.goto('/login');
+    await clearAuth(page);
     await page.getByTestId('login-username').fill('admin');
     await page.getByTestId('login-password').fill('wrongpassword');
     await page.getByTestId('login-submit').click();
