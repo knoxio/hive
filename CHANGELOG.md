@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `tests/e2e/member-panel.spec.ts`, `tests/e2e/message-input.spec.ts`: added `hive-joined-rooms`+rooms/messages/members route mocks, navigate to `/rooms/general` so `MemberPanel`/`MessageInput` render (they require a selected room)
 - `tests/e2e/chat-timeline.spec.ts`: updated messages route pattern to `**/api/rooms/*/messages**` so query-parameterised history URLs match
 - `src/components/RoomList.tsx`: added `data-testid="room-list"` to `ul` element for test discoverability
+- `src/components/RoomSettingsPanel.tsx`: sync local `displayName`/`description` state from server response after successful PATCH — form was staying dirty after save because local state diverged from updated prop (tb-210)
+- `e2e/create-room-mh014.spec.ts`: use `getByRole('button', { name: 'Create your first room' })` for empty-state CTA click — `getByText` matched the description `<p>` before the button in DOM order (tb-210)
+- `tests/e2e/room-list.spec.ts`: add `[data-testid="room-list-empty"]` to sidebar locator — empty room mock causes `EmptyState` to render instead of the `<ul data-testid="room-list">` (tb-210)
 
 ### Added
 - `GET /api/users/me` endpoint — returns username, role, and ID from JWT claims (MH-011)
