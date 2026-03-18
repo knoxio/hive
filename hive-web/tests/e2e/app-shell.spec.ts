@@ -87,13 +87,13 @@ test.describe('FE-001: App Shell Layout', () => {
   test('active tab is visually highlighted', async ({ page }) => {
     const roomsTab = page.getByRole('tab', { name: 'Rooms' }).or(page.getByText('Rooms', { exact: true })).first();
     await roomsTab.click();
-    // Active tab should have a distinct class or aria-selected
-    await expect(roomsTab).toHaveAttribute('aria-selected', 'true').or(
-      expect(roomsTab).toHaveClass(/active|selected/)
-    );
+    // Active tab sets aria-selected="true"
+    await expect(roomsTab).toHaveAttribute('aria-selected', 'true');
   });
 
   test('keyboard shortcuts switch tabs', async ({ page }) => {
+    // Ensure the page has focus so keyboard events are captured
+    await page.click('body');
     await page.keyboard.press('Control+2');
     await expect(page).toHaveURL(/\/agents/);
     await page.keyboard.press('Control+3');

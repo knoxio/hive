@@ -76,7 +76,7 @@ async function setupPage(page: Page) {
     });
   });
 
-  await page.route('**/api/rooms/*/messages', async (route) => {
+  await page.route('**/api/rooms/*/messages**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -97,8 +97,8 @@ test.describe('FE-004: Chat Timeline', () => {
   test('data-testid="message" present on regular messages', async ({ page }) => {
     await setupPage(page);
 
-    // Override messages mock to return one message
-    await page.route('**/api/rooms/general/messages', async (route) => {
+    // Override messages mock to return one message (** suffix matches query params)
+    await page.route('**/api/rooms/general/messages**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -130,8 +130,8 @@ test.describe('FE-004: Chat Timeline', () => {
   test('data-testid="system-message" present on system messages', async ({ page }) => {
     await setupPage(page);
 
-    // Override messages mock to return a system message
-    await page.route('**/api/rooms/general/messages', async (route) => {
+    // Override messages mock to return a system message (** suffix matches query params)
+    await page.route('**/api/rooms/general/messages**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

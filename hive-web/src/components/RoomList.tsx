@@ -32,7 +32,7 @@ export function RoomList({ rooms, selectedRoomId, onSelectRoom, onCreateRoom }: 
   }
 
   return (
-    <ul className="space-y-0.5 px-2">
+    <ul className="space-y-0.5 px-2" data-testid="room-list">
       {rooms.map((room) => (
         <li key={room.id}>
           <button
