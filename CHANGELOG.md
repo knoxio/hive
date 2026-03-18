@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - `playwright.config.ts` now uses `testMatch` covering both `./e2e/` and `./tests/e2e/` — 40 tests in `tests/e2e/` were previously orphaned and never run by CI (#173)
 - Replaced constant-value test assertions in `ws_relay.rs` and `rooms.rs` with behavior assertions; extracted `validate_description_len` helper from inline handler guard (#176)
+- `mh025-agent-list.spec.ts` now navigates to `/agents` (AgentGrid only mounts on the agents tab), fixes `setup_complete` field name in setup/status stub, and adds `/api/auth/me` and `/api/rooms` stubs (#226)
 
 ### Added
 - `GET /api/users/me` endpoint — returns username, role, and ID from JWT claims (MH-011)
