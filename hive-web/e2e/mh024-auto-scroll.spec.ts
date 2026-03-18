@@ -211,7 +211,7 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
   test('badge appears when user is scrolled up and a new message arrives', async ({
     page,
   }) => {
-    await setupMocks(page, { historyCount: 30 });
+    await setupMocks(page, { historyCount: 100 });
 
     // Use routeWebSocket to control messages sent to the page.
     let sendToPage: ((msg: string) => void) | undefined;
@@ -252,7 +252,7 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
   test('badge shows "1 new message ↓" for a single unseen message', async ({
     page,
   }) => {
-    await setupMocks(page, { historyCount: 30 });
+    await setupMocks(page, { historyCount: 100 });
 
     let sendToPage: ((msg: string) => void) | undefined;
     await page.routeWebSocket('**/ws/**', (ws) => {
@@ -284,7 +284,7 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
   test('badge shows plural "new messages ↓" for multiple unseen messages', async ({
     page,
   }) => {
-    await setupMocks(page, { historyCount: 30 });
+    await setupMocks(page, { historyCount: 100 });
 
     let sendToPage: ((msg: string) => void) | undefined;
     await page.routeWebSocket('**/ws/**', (ws) => {
@@ -320,7 +320,7 @@ test.describe('MH-024: unseen badge when scrolled up', () => {
 
 test.describe('MH-024: clicking badge dismisses it', () => {
   test('clicking the badge hides it', async ({ page }) => {
-    await setupMocks(page, { historyCount: 30 });
+    await setupMocks(page, { historyCount: 100 });
 
     let sendToPage: ((msg: string) => void) | undefined;
     await page.routeWebSocket('**/ws/**', (ws) => {
@@ -360,7 +360,7 @@ test.describe('MH-024: room switch resets badge', () => {
   test('badge is not visible after switching to a different room', async ({
     page,
   }) => {
-    await setupMocks(page, { historyCount: 30 });
+    await setupMocks(page, { historyCount: 100 });
 
     let sendToPage: ((msg: string) => void) | undefined;
     await page.routeWebSocket('**/ws/**', (ws) => {
