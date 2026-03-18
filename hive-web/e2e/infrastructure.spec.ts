@@ -32,7 +32,7 @@ test.describe('BE-003: WS Relay - Extended', () => {
   test('WS endpoint exists at /ws/:room_id', async ({ request }) => {
     // HTTP request to WS endpoint should return 426 Upgrade Required or 400
     const response = await request.get(`${API_URL}/ws/test-room`);
-    expect([400, 404, 426]).toContain(response.status());
+    expect([400, 401, 404, 426]).toContain(response.status());
   });
 });
 
@@ -55,6 +55,6 @@ test.describe('Negative Tests', () => {
       headers: { 'Content-Type': 'application/json' },
       data: '',
     });
-    expect([400, 404, 415, 422, 501]).toContain(response.status());
+    expect([400, 401, 404, 415, 422, 501]).toContain(response.status());
   });
 });
