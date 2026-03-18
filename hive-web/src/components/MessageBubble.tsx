@@ -71,7 +71,10 @@ function SystemMessage({ message }: { message: RoomMessage }) {
         : (message.content ?? '');
 
   return (
-    <div className="flex items-start gap-2 px-4 py-1 text-xs text-gray-500">
+    <div
+      data-testid="system-message"
+      className="flex items-start gap-2 px-4 py-1 text-xs text-gray-500"
+    >
       <span className="w-5 text-center font-mono text-gray-600">{icon}</span>
       <span className="flex-1">
         [{formatRelative(message.ts)}] {text}
@@ -93,6 +96,7 @@ export default function MessageBubble({
 
   return (
     <div
+      data-testid="message"
       className={`flex items-start gap-3 px-4 hover:bg-gray-800/50 transition-colors ${
         isGrouped ? 'py-0.5' : 'py-2'
       }`}
@@ -110,7 +114,10 @@ export default function MessageBubble({
         {/* Header row — sender name + timestamp, suppressed for grouped messages */}
         {!isGrouped && (
           <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-sm text-gray-100">
+            <span
+              data-testid="message-sender"
+              className="font-semibold text-sm text-gray-100"
+            >
               {message.user}
             </span>
             <span
@@ -124,7 +131,10 @@ export default function MessageBubble({
           </div>
         )}
 
-        <p className="text-sm text-gray-200 mt-0.5 break-words whitespace-pre-wrap">
+        <p
+          data-testid="message-content"
+          className="text-sm text-gray-200 mt-0.5 break-words whitespace-pre-wrap"
+        >
           {renderContent(message.content ?? '', currentUser)}
         </p>
       </div>
