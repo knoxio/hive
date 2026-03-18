@@ -36,6 +36,7 @@ export function RoomList({ rooms, selectedRoomId, onSelectRoom, onCreateRoom }: 
       {rooms.map((room) => (
         <li key={room.id}>
           <button
+            data-testid="room-item"
             onClick={() => onSelectRoom(room.id)}
             className={`w-full text-left px-3 py-2 rounded text-sm transition-colors flex items-center justify-between ${
               selectedRoomId === room.id
