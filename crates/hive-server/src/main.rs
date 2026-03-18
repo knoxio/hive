@@ -122,6 +122,9 @@ async fn main() {
     // Seed admin user from env vars (idempotent).
     auth::seed_admin_user(&db);
 
+    // Seed default workspace (id=1) so room creation works on a fresh database.
+    rooms::seed_default_workspace(&db);
+
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("hive-server starting on {bind_addr}");
 

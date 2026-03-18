@@ -607,6 +607,39 @@ pub async fn get_room_members(
 }
 
 // ---------------------------------------------------------------------------
+// Startup seeding
+// ---------------------------------------------------------------------------
+
+/// Seed the default workspace (id=1) on first run.
+///
+/// Every room creation uses `workspace_id = 1` by default. A fresh database
+/// has no workspaces, which causes `POST /api/rooms` to return 404. This
+/// function inserts a system user (id=1) and the default workspace (id=1) so
+/// that room operations work out of the box without extra setup.
+///
+/// Both inserts are `INSERT OR IGNORE`, making this fully idempotent.
+pub fn seed_default_workspace(db: &crate::db::Database) {
+    let result = db.with_conn(|conn| {
+        // Ensure a system user exists as workspace owner.
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, provider, provider_id) \
+             VALUES (1, 'system', 'system')",
+            [],
+        )?;
+        // Ensure the default workspace exists.
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces (id, name, owner_id) \
+             VALUES (1, 'default', 1)",
+            [],
+        )?;
+        Ok(())
+    });
+    if let Err(e) = result {
+        tracing::warn!("failed to seed default workspace: {e}");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
