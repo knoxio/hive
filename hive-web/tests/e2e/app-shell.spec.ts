@@ -2,10 +2,47 @@ import { test, expect } from '@playwright/test';
 
 /**
  * FE-001: App Shell with Three-Panel Layout and Tab Navigation
+ *
+ * Tests use a mock JWT token and mocked API routes — no running backend required.
  */
+
+// A mock JWT with admin role (payload: sub=1, username=admin, role=admin, exp=far future)
+const MOCK_TOKEN =
+  'eyJhbGciOiJIUzI1NiJ9.' +
+  btoa(JSON.stringify({ sub: '1', username: 'admin', role: 'admin', exp: 9999999999, iat: 1 }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_') +
+  '.mock-sig';
+
+/** Mount the app in an authenticated state with setup complete and no rooms. */
+async function setupPage(page: import('@playwright/test').Page) {
+  await page.addInitScript((token: string) => {
+    localStorage.setItem('hive-auth-token', token);
+  }, MOCK_TOKEN);
+
+  await page.route('**/api/setup/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ setup_complete: true, has_admin: true }),
+    }),
+  );
+
+  await page.route('**/api/rooms', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ rooms: [], total: 0 }),
+    }),
+  );
+
+  await page.goto('/');
+}
+
 test.describe('FE-001: App Shell Layout', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await setupPage(page);
   });
 
   test('renders three-panel layout', async ({ page }) => {
