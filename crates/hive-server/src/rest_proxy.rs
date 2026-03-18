@@ -328,10 +328,7 @@ mod tests {
 
     #[test]
     fn send_body_missing_content_rejected() {
-        assert_eq!(
-            validate_send_body(&json!({})),
-            Err(StatusCode::BAD_REQUEST)
-        );
+        assert_eq!(validate_send_body(&json!({})), Err(StatusCode::BAD_REQUEST));
     }
 
     #[test]
@@ -356,6 +353,9 @@ mod tests {
 
     #[test]
     fn send_body_extra_fields_do_not_affect_validation() {
-        assert!(validate_send_body(&json!({"content": "hi", "room_id": "test", "user": "alice"})).is_ok());
+        assert!(
+            validate_send_body(&json!({"content": "hi", "room_id": "test", "user": "alice"}))
+                .is_ok()
+        );
     }
 }
